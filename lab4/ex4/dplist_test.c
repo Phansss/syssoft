@@ -2,12 +2,27 @@
  * \author Pieter Hanssens
  */
 #define _GNU_SOURCE
+#define DEBUG
 
 #include "dplist.h"
 #include <check.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
+
+#ifdef DEBUG
+void dpl_print_special(dplist_t* list, char const * caller_name, int caller_line, char const * caller_file )
+{
+    //printf("----------------------------------------\n");
+    printf("\n");
+    printf( "%5s Line %d in %s (%s):\n","", caller_line, caller_file, caller_name);
+    dpl_print(list);
+}
+#endif
+#ifdef DEBUG
+#define dpl_print(list) dpl_print_special(list, __func__, __LINE__, __FILE__)
+#endif
+
 
 typedef struct {
     int id;
@@ -71,7 +86,7 @@ int element_compare(void * x, void * y) {
  * \return Nothing. The content is printed on stdout
 */
 void element_print(void* element) {
-    printf("(id=%d, name=%s)\n", ((my_element_t*)element)->id, ((my_element_t*)element)->name);
+    printf(" (id=%d, name=%s)\n", ((my_element_t*)element)->id, ((my_element_t*)element)->name);
 }
 
 /**
@@ -963,7 +978,6 @@ START_TEST(test_getReferenceAtIndexMulti_pointer) {
         el9, element);
     
 }
-
 END_TEST
 
 START_TEST(test_getReferenceAtIndexMulti_deepCopy) {
@@ -1174,6 +1188,604 @@ END_TEST
 ***********************************************************************************************/
 //NOTE: This function is tested in GET_REFERENCE_AT INDEX (lines 891 - 1019)
 
+
+/**********************************************************************************************
+ * ********************************************************************************************
+ * *---------------------------------- EXTRA_FUNCTIONS ----------------------------------------
+ * ********************************************************************************************
+***********************************************************************************************/
+
+/**********************************************************************************************
+ * -------------------------------- GET_FIRST_REFERENCE ---------------------------------------
+***********************************************************************************************/
+START_TEST(test_getFirstReferenceNULL) {
+    ck_assert_msg(dpl_get_first_reference(list_null) == NULL, 
+        "Failure: expected NULL, got%p", 
+        dpl_get_first_reference(list_null));
+}
+END_TEST
+
+START_TEST(test_getFirstReferenceEmpty) {
+    ck_assert_msg(dpl_get_first_reference(list_empty) == NULL, 
+        "Failure: expected NULL, got%p", 
+        dpl_get_first_reference(list_empty));
+}
+END_TEST
+
+START_TEST(test_getFirstReferenceOne_pointer) {
+    dplist_node_t *el_one_temp = dpl_get_reference_at_index(list_one_element_pointer, 0);
+    ck_assert_msg(dpl_get_first_reference(list_one_element_pointer) == el_one_temp, 
+        "Failure: expected equal pointers, got el_one_temp (%p) and get_first reference (%p) ", 
+        el_one_temp, dpl_get_first_reference(list_one_element_pointer));
+}
+END_TEST
+
+START_TEST(test_getFirstReferenceMulti_deepCopy) {
+    dplist_node_t *el_multi_temp = dpl_get_reference_at_index(list_ten_elements_deepCopy, 0);
+    ck_assert_msg(dpl_get_first_reference(list_ten_elements_deepCopy) == el_multi_temp, 
+        "Failure: expected equal pointers, got el_one_temp (%p) and get_first reference (%p) ", 
+        el_multi_temp, dpl_get_first_reference(list_ten_elements_deepCopy));
+}
+END_TEST
+/**********************************************************************************************
+ * -------------------------------- GET_LAST_REFERENCE ---------------------------------------
+***********************************************************************************************/
+START_TEST(test_getLastReferenceNULL) {
+    ck_assert_msg(dpl_get_last_reference(list_null) == NULL, 
+        "Failure: expected NULL, got%p", 
+        dpl_get_last_reference(list_null));
+}
+END_TEST
+
+START_TEST(test_getLastReferenceEmpty) {
+    ck_assert_msg(dpl_get_last_reference(list_empty) == NULL, 
+        "Failure: expected NULL, got%p", 
+        dpl_get_last_reference(list_empty));
+}
+END_TEST
+
+START_TEST(test_getLastReferenceOne_pointer) {
+    dplist_node_t *el_one_temp = dpl_get_reference_at_index(list_one_element_pointer, 0);
+    ck_assert_msg(dpl_get_last_reference(list_one_element_pointer) == el_one_temp, 
+        "Failure: expected equal pointers, got el_one_temp (%p) and get_last_reference (%p) ", 
+        el_one_temp, dpl_get_last_reference(list_one_element_pointer));
+}
+END_TEST
+
+START_TEST(test_getLastReferenceMulti_deepCopy) {
+    dplist_node_t *el_multi_temp = dpl_get_reference_at_index(list_ten_elements_deepCopy, 9);
+    ck_assert_msg(dpl_get_last_reference(list_ten_elements_deepCopy) == el_multi_temp, 
+        "Failure: expected equal pointers, got el_one_temp (%p) and get_last_reference (%p) ", 
+        el_multi_temp, dpl_get_last_reference(list_ten_elements_deepCopy));
+}
+END_TEST
+/**********************************************************************************************
+ * -------------------------------- GET_NEXT_REFERENCE ---------------------------------------
+***********************************************************************************************/
+START_TEST(test_getNextReferenceNULL) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    dplist_node_t* ref_multi = dpl_get_reference_at_index(list_ten_elements_deepCopy, 4);
+    ck_assert_msg(dpl_get_next_reference(list_null, ref_one) == NULL, 
+        "Failure: expected NULL, got%p", 
+        dpl_get_next_reference(list_null, ref_one));
+    ck_assert_msg(dpl_get_next_reference(list_null, ref_multi) == NULL, 
+        "Failure: expected NULL, got%p", 
+        dpl_get_next_reference(list_null, ref_multi));
+}
+END_TEST
+
+START_TEST(test_getNextReferenceEmpty) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    dplist_node_t* ref_multi = dpl_get_reference_at_index(list_ten_elements_deepCopy, 4);
+    ck_assert_msg(dpl_get_next_reference(list_empty, ref_one) == NULL, 
+        "Failure: expected NULL, got%p", 
+        dpl_get_next_reference(list_empty, ref_one));
+    ck_assert_msg(dpl_get_next_reference(list_empty, ref_multi) == NULL, 
+        "Failure: expected NULL, got%p", 
+        dpl_get_next_reference(list_empty, ref_multi));
+}
+END_TEST
+
+START_TEST(test_getNextReferenceOne) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    ck_assert_msg(dpl_get_next_reference(list_one_element_deepCopy, ref_one) == NULL, 
+        "Failure: expected NULL, got%p", 
+        dpl_get_next_reference(list_empty, ref_one));
+}
+END_TEST
+
+START_TEST(test_getNextReferenceMulti) {
+    dplist_node_t* ref_multi = dpl_get_reference_at_index(list_ten_elements_deepCopy, 4);
+    dplist_node_t* ref_multi_next = dpl_get_reference_at_index(list_ten_elements_deepCopy, 5);
+    ck_assert_msg(dpl_get_next_reference(list_ten_elements_deepCopy, ref_multi) == ref_multi_next, 
+        "Failure: expected %p, got %p", 
+        ref_multi_next, dpl_get_next_reference(list_ten_elements_deepCopy, ref_multi));
+
+    ref_multi = dpl_get_reference_at_index(list_ten_elements_deepCopy, 9);
+    ck_assert_msg(dpl_get_next_reference(list_ten_elements_deepCopy, ref_multi) == NULL, 
+        "Failure: expected NULL, got %p", 
+        dpl_get_next_reference(list_ten_elements_deepCopy, ref_multi));
+}
+END_TEST
+
+/**********************************************************************************************
+ * -------------------------------- GET_PREVIOUS_REFERENCE ------------------------------------
+***********************************************************************************************/
+START_TEST(test_getPreviousReferenceNULL) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    dplist_node_t* ref_multi = dpl_get_reference_at_index(list_ten_elements_deepCopy, 4);
+    ck_assert_msg(dpl_get_previous_reference(list_null, ref_one) == NULL, 
+        "Failure: expected NULL, got%p", 
+        dpl_get_previous_reference(list_null, ref_one));
+    ck_assert_msg(dpl_get_previous_reference(list_null, ref_multi) == NULL, 
+        "Failure: expected NULL, got%p", 
+        dpl_get_previous_reference(list_null, ref_multi));
+}
+END_TEST
+
+START_TEST(test_getPreviousReferenceEmpty) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    dplist_node_t* ref_multi = dpl_get_reference_at_index(list_ten_elements_deepCopy, 4);
+    ck_assert_msg(dpl_get_previous_reference(list_empty, ref_one) == NULL, 
+        "Failure: expected NULL, got%p", 
+        dpl_get_previous_reference(list_empty, ref_one));
+    ck_assert_msg(dpl_get_previous_reference(list_empty, ref_multi) == NULL, 
+        "Failure: expected NULL, got%p", 
+        dpl_get_previous_reference(list_empty, ref_multi));
+}
+END_TEST
+
+START_TEST(test_getPreviousReferenceOne) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    ck_assert_msg(dpl_get_previous_reference(list_one_element_deepCopy, ref_one) == NULL, 
+        "Failure: expected NULL, got%p", 
+        dpl_get_previous_reference(list_empty, ref_one));
+}
+END_TEST
+
+START_TEST(test_getPreviousReferenceMulti) {
+    dplist_node_t* ref_multi = dpl_get_reference_at_index(list_ten_elements_deepCopy, 4);
+    dplist_node_t* ref_multi_previous = dpl_get_reference_at_index(list_ten_elements_deepCopy, 3);
+    ck_assert_msg(dpl_get_previous_reference(list_ten_elements_deepCopy, ref_multi) == ref_multi_previous, 
+        "Failure: expected %p, got %p", 
+        ref_multi_previous, dpl_get_previous_reference(list_ten_elements_deepCopy, ref_multi));
+
+    ref_multi = dpl_get_reference_at_index(list_ten_elements_deepCopy, 0);
+    ck_assert_msg(dpl_get_previous_reference(list_ten_elements_deepCopy, ref_multi) == NULL, 
+        "Failure: expected NULL, got %p", 
+        dpl_get_previous_reference(list_ten_elements_deepCopy, ref_multi));
+}
+END_TEST
+/**********************************************************************************************
+ * -------------------------------- GET_REFERENCE_OF_ELEMENT ----------------------------------
+***********************************************************************************************/
+START_TEST (test_getReferenceOfElementNULL) {
+    ck_assert_msg(dpl_get_reference_of_element(list_null, el_one) == NULL,
+        "Failure: expected NULL, got %p",
+        dpl_get_reference_of_element(list_null, el_one));    
+
+} END_TEST
+
+START_TEST (test_getReferenceOfElementEmpty) {
+    ck_assert_msg(dpl_get_reference_of_element(list_empty, el_one) == NULL,
+        "Failure: expected NULL, got %p",
+        dpl_get_reference_of_element(list_empty, el_one));     
+
+} END_TEST
+
+START_TEST (test_getReferenceOfElementOne) {
+    dplist_node_t *ref_idx = dpl_get_reference_at_index(list_one_element_pointer, 0);
+    ck_assert_msg(dpl_get_reference_of_element(list_one_element_pointer, el_one) == ref_idx,
+        "Failure: expected %p, got %p",
+        ref_idx, dpl_get_reference_of_element(list_one_element_pointer, el_one));   
+} END_TEST
+
+START_TEST (test_getReferenceOfElementMulti) {
+    dplist_node_t *ref_idx = dpl_get_reference_at_index(list_ten_elements_pointer, 4);
+    dplist_node_t *ref_idx_last = dpl_get_reference_at_index(list_ten_elements_pointer, 9);
+
+    ck_assert_msg(dpl_get_reference_of_element(list_ten_elements_pointer, el4) == ref_idx,
+        "Failure: expected %p, got %p",
+        ref_idx, dpl_get_reference_of_element(list_ten_elements_pointer, el4)); 
+    ck_assert_msg(dpl_get_reference_of_element(list_ten_elements_pointer, el9) == ref_idx_last,
+        "Failure: expected %p, got %p",
+        ref_idx_last, dpl_get_reference_of_element(list_ten_elements_pointer, el9));
+} END_TEST
+
+/**********************************************************************************************
+ * -------------------------------- GET_INDEX_OF_REFERENCE ------------------------------------
+***********************************************************************************************/
+START_TEST (test_getIndexOfReferenceNULL) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    ck_assert_msg(dpl_get_index_of_reference(list_null, ref_one) == -1, 
+        "Failure: expected NULL, got %d",
+        dpl_get_index_of_reference(list_null, ref_one));
+
+} END_TEST
+
+START_TEST (test_getIndexOfReferenceEmpty) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    ck_assert_msg(dpl_get_index_of_reference(list_empty, ref_one) == -1, 
+        "Failure: expected NULL, got %d",
+        dpl_get_index_of_reference(list_empty, ref_one));
+} END_TEST
+
+START_TEST (test_getIndexOfReferenceOne) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    ck_assert_msg(dpl_get_index_of_reference(list_one_element_deepCopy, ref_one) == 0, 
+        "Failure: expected 0, got %d",
+        dpl_get_index_of_reference(list_one_element_deepCopy, ref_one));
+} END_TEST
+
+START_TEST (test_getIndexOfReferenceMulti) {
+    dplist_node_t* ref_multi = dpl_get_reference_at_index(list_ten_elements_deepCopy, 4);
+    ck_assert_msg(dpl_get_index_of_reference(list_ten_elements_deepCopy, ref_multi) == 4, 
+        "Failure: expected 4, got %d",
+        dpl_get_index_of_reference(list_ten_elements_deepCopy, ref_multi));
+} END_TEST
+
+
+/**********************************************************************************************
+ * -------------------------------- INSERT_AT_REFERENCE ---------------------------------------
+***********************************************************************************************/
+START_TEST (test_insertAtReferenceNULL) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    dplist_t* result = dpl_insert_at_reference(list_null, el_one, ref_one, true);
+    ck_assert_msg(result == NULL,
+        "Failure: expected NULL, got %p",
+        result);
+    ck_assert_msg(dpl_size(list_null) == -1,
+        "Failure: expected -1, got %d",
+        dpl_size(list_null));
+} END_TEST
+
+START_TEST (test_insertAtReferenceEmpty) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    dplist_t* result = dpl_insert_at_reference(list_empty, el_one, ref_one, true);
+    ck_assert_msg(result == list_empty,
+        "Failure: expected %p, got %p",
+        list_empty, result);
+    ck_assert_msg(dpl_size(list_empty) == 0,
+        "Failure: expected 0, got %d",
+        dpl_size(list_empty));
+} END_TEST
+
+START_TEST (test_insertAtReferenceOne) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    dplist_t* result = dpl_insert_at_reference(list_one_element_deepCopy, el1, ref_one, true);
+    ck_assert_msg(result == list_one_element_deepCopy,
+        "Failure: expected %p, got %p",
+        list_one_element_deepCopy, result);
+
+    my_element_t* inserted_el = dpl_get_element_at_index(list_one_element_deepCopy, 0);
+     ck_assert_msg(inserted_el->id == 1,
+        "Failure: expected 1, got %d",
+        inserted_el->id);
+    ck_assert_msg(strcmp(inserted_el->name, "el_1") == 0,
+        "Failure: expected \"el_1\", got \"%s\"",
+        inserted_el->name);
+  
+   
+} END_TEST
+
+START_TEST (test_insertAtReferenceMulti) {
+    dplist_node_t* ref_multi0 = dpl_get_reference_at_index(list_ten_elements_deepCopy, 0);
+    dplist_node_t* ref_multi4 = dpl_get_reference_at_index(list_ten_elements_deepCopy, 4);
+    dplist_node_t* ref_multi9 = dpl_get_reference_at_index(list_ten_elements_deepCopy, 9);
+    dplist_t* result = dpl_insert_at_reference(list_ten_elements_deepCopy, el_insert, ref_multi0, true); //|
+    result = dpl_insert_at_reference(list_ten_elements_deepCopy, el_insert, ref_multi4, true);           //| Inserting
+    result = dpl_insert_at_reference(list_ten_elements_deepCopy, el_insert, ref_multi9, true);           //| 
+    
+    ck_assert_msg(result == list_ten_elements_deepCopy,
+        "Failure: expected %p, got %p",
+        list_ten_elements_deepCopy, result);
+
+    my_element_t* inserted_el = dpl_get_element_at_index(list_ten_elements_deepCopy, 0);
+     ck_assert_msg(inserted_el->id == 99,
+        "Failure: expected 99, got %d",
+        inserted_el->id);
+    ck_assert_msg(strcmp(inserted_el->name, "el_insert") == 0,
+        "Failure: expected \"el_insert\", got \"%s\"",
+        inserted_el->name);
+    inserted_el = dpl_get_element_at_index(list_ten_elements_deepCopy, 5);
+    ck_assert_msg(inserted_el->id == 99,
+        "Failure: expected 99, got %d",
+        inserted_el->id);
+    ck_assert_msg(strcmp(inserted_el->name, "el_insert") == 0,
+        "Failure: expected \"el_insert\", got \"%s\"",
+        inserted_el->name);
+    inserted_el = dpl_get_element_at_index(list_ten_elements_deepCopy, 11);
+    ck_assert_msg(inserted_el->id == 99,
+        "Failure: expected 99, got %d",
+        inserted_el->id);
+    ck_assert_msg(strcmp(inserted_el->name, "el_insert") == 0,
+        "Failure: expected \"el_insert\", got \"%s\"",
+        inserted_el->name);
+
+} END_TEST
+
+
+/**********************************************************************************************
+ * -------------------------------- INSERT_SORTED ---------------------------------------------
+***********************************************************************************************/
+START_TEST (test_insertSortedNULL) {
+    dplist_t* result = dpl_insert_sorted(list_null, el_one, true);
+    ck_assert_msg(result == NULL,
+        "Failure: expected NULL, got %p",
+        result);
+    ck_assert_msg(dpl_size(list_null) == -1,
+        "Failure: expected -1, got %d",
+        dpl_size(list_null));
+} END_TEST
+
+START_TEST (test_insertSortedEmpty) {
+    dplist_t* result = dpl_insert_sorted(list_empty, el_insert, true);
+    ck_assert_msg(result == list_empty,
+        "Failure: expected NULL, got %p",
+        result);
+    ck_assert_msg(dpl_size(list_empty) == 1,
+        "Failure: expected 1, got %d",
+        dpl_size(list_empty));
+    my_element_t* inserted = dpl_get_element_at_index(list_empty, 0);
+    ck_assert_msg(inserted->id == 99,
+        "Failure: expected 99, got %d",
+        inserted->id);
+    ck_assert_msg(strcmp(inserted->name, "el_insert") == 0,
+        "Failure: expected \"el_insert\", got \"%s",
+        inserted->name);
+    
+} END_TEST
+
+START_TEST (test_insertSortedOne) {
+    dplist_t* result = dpl_insert_sorted(list_one_element_deepCopy, el_insert, true);
+    ck_assert_msg(result == list_one_element_deepCopy,
+        "Failure: expected NULL, got %p",
+        result);
+    ck_assert_msg(dpl_size(list_one_element_deepCopy) == 2,
+        "Failure: expected 2, got %d",
+        dpl_size(list_one_element_deepCopy));
+    my_element_t* inserted = dpl_get_element_at_index(list_one_element_deepCopy, 1);
+    ck_assert_msg(inserted->id == 99,
+        "Failure: expected 99, got %d",
+        inserted->id);
+    ck_assert_msg(strcmp(inserted->name, "el_insert") == 0,
+        "Failure: expected \"el_insert\", got \"%s",
+        inserted->name);
+  
+   
+} END_TEST
+
+START_TEST (test_insertSortedMulti) {
+    
+    dplist_t* result = dpl_insert_sorted(list_ten_elements_deepCopy, el_insert, true);    //|insert el_insert
+    ck_assert_msg(result == list_ten_elements_deepCopy,
+        "Failure: expected %p, got %p",
+        list_ten_elements_deepCopy, result);
+    my_element_t* inserted_el = dpl_get_element_at_index(list_ten_elements_deepCopy, 10);
+     ck_assert_msg(inserted_el->id == 99,
+        "Failure: expected 99, got %d",
+        inserted_el->id);
+    ck_assert_msg(strcmp(inserted_el->name, "el_insert") == 0,
+        "Failure: expected \"el_insert\", got \"%s\"",
+        inserted_el->name);
+    result = dpl_remove_at_index(list_ten_elements_deepCopy, 4, true); // Remove el4 and test whether el at index 4 is el5
+    my_element_t* temp_el4 = dpl_get_element_at_index(list_ten_elements_deepCopy, 4);
+    ck_assert_msg(temp_el4->id == 5,
+        "Failure: expected 5, got \"%d\"",
+        temp_el4->id);
+    ck_assert_msg(strcmp(temp_el4->name, "el_5") == 0,
+        "Failure: expected \"el5\", got \"%s\"",
+        temp_el4->name);
+    result = dpl_insert_sorted(list_ten_elements_deepCopy, el4, true); // Insert el4 and test whether el at index 4 is el4
+    temp_el4 = dpl_get_element_at_index(list_ten_elements_deepCopy, 4);
+    ck_assert_msg(temp_el4->id == 4,
+        "Failure: expected 4, got \"%d\"",
+        temp_el4->id);
+    ck_assert_msg(strcmp(temp_el4->name, "el_4") == 0,
+        "Failure: expected \"el4\", got \"%s\"",
+        temp_el4->name);
+    result = dpl_insert_sorted(list_ten_elements_deepCopy, el4, true); // Insert again el4 and test whether el at index 5 is el4
+    temp_el4 = dpl_get_element_at_index(list_ten_elements_deepCopy, 5);
+    ck_assert_msg(temp_el4->id == 4,
+        "Failure: expected 4, got \"%d\"",
+        temp_el4->id);
+    ck_assert_msg(strcmp(temp_el4->name, "el_4") == 0,
+        "Failure: expected \"el4\", got \"%s\"",
+        temp_el4->name);
+    
+    result = dpl_insert_sorted(list_ten_elements_deepCopy, el0, true); // Insert el0 and test whether el at index 0 and 1 is el0
+    my_element_t* temp_el0 = dpl_get_element_at_index(list_ten_elements_deepCopy, 0);
+    ck_assert_msg(temp_el0->id == 0,
+        "Failure: expected 4, got \"%d\"",
+        temp_el0->id);
+    ck_assert_msg(strcmp(temp_el0->name, "el_0") == 0,
+        "Failure: expected \"el0\", got \"%s\"",
+        temp_el0->name);
+    temp_el0 = dpl_get_element_at_index(list_ten_elements_deepCopy, 1);
+    ck_assert_msg(temp_el0->id == 0,
+        "Failure: expected 4, got \"%d\"",
+        temp_el0->id);
+    ck_assert_msg(strcmp(temp_el0->name, "el_0") == 0,
+        "Failure: expected \"el0\", got \"%s\"",
+        temp_el0->name);
+    result = dpl_insert_at_index(list_ten_elements_deepCopy, el9, 5, true);
+    result = dpl_insert_sorted(list_ten_elements_deepCopy, el5, true);
+    ck_assert_msg(result == NULL,
+        "Failure: expected NULL, got \"%p\"",
+        result);
+} END_TEST
+
+/**********************************************************************************************
+ * -------------------------------- REMOVE_AT_REFERENCE ---------------------------------------
+***********************************************************************************************/
+START_TEST (test_removeAtReferenceNULL) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    dplist_t* result = dpl_remove_at_reference(list_null, ref_one, true);
+    ck_assert_msg(result == NULL,
+        "Failure: expected NULL, got %p",
+        result);
+    ck_assert_msg(dpl_size(list_null) == -1,
+        "Failure: expected -1, got %d",
+        dpl_size(list_null));
+} END_TEST
+
+START_TEST (test_removeAtReferenceEmpty) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    dplist_t* result = dpl_remove_at_reference(list_empty, ref_one, true);
+    ck_assert_msg(result == list_empty,
+        "Failure: expected %p, got %p",
+        list_empty, result);
+    ck_assert_msg(dpl_size(list_empty) == 0,
+        "Failure: expected 0, got %d",
+        dpl_size(list_empty));
+} END_TEST
+
+START_TEST (test_removeAtReferenceOne) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    my_element_t* elem_one = dpl_get_element_at_reference(list_one_element_deepCopy, ref_one);
+    dplist_t* result = dpl_remove_at_reference(list_one_element_deepCopy, ref_one, true);
+    ck_assert_msg(result == list_one_element_deepCopy,
+        "Failure: expected %p, got %p",
+        list_one_element_deepCopy, result);
+    ck_assert_msg(dpl_size(result) == 0,
+        "Failure: expected 0, got %d",
+        dpl_size(result));
+    ck_assert_msg(elem_one->id > 1000,
+        "Failure: expected elem_one to be freed and thus id >1000, got %d",
+        el_one->id);
+   
+} END_TEST
+
+START_TEST (test_removeAtReferenceMulti) {
+    dplist_node_t* ref_multi0 = dpl_get_reference_at_index(list_ten_elements_deepCopy, 0);
+    my_element_t* elem_multi0 = dpl_get_element_at_reference(list_ten_elements_deepCopy, ref_multi0);
+    dplist_node_t* ref_multi4 = dpl_get_reference_at_index(list_ten_elements_deepCopy, 4);
+    my_element_t* elem_multi4 = dpl_get_element_at_reference(list_ten_elements_deepCopy, ref_multi4);
+    dplist_node_t* ref_multi9 = dpl_get_reference_at_index(list_ten_elements_deepCopy, 9);
+    my_element_t* elem_multi9 = dpl_get_element_at_reference(list_ten_elements_deepCopy, ref_multi9);
+    
+    dplist_t* result = dpl_remove_at_reference(list_ten_elements_deepCopy, ref_multi0, true);
+    ck_assert_msg(result == list_ten_elements_deepCopy,
+        "Failure: expected %p, got %p",
+        list_ten_elements_deepCopy, result);
+    ck_assert_msg(dpl_size(result) == 9,
+        "Failure: expected 9, got %d",
+        dpl_size(result));
+    ck_assert_msg(elem_multi0->id > 1000,
+        "Failure: expected el_multi0 to be freed and thus id >1000, got %d",
+        elem_multi0->id);
+    result = dpl_remove_at_reference(list_ten_elements_deepCopy, ref_multi4, true);
+    ck_assert_msg(result == list_ten_elements_deepCopy,
+        "Failure: expected %p, got %p",
+        list_ten_elements_deepCopy, result);
+    ck_assert_msg(dpl_size(result) == 8,
+        "Failure: expected 8, got %d",
+        dpl_size(result));
+    ck_assert_msg(elem_multi4->id > 1000,
+        "Failure: expected el_multi4 to be freed and thus id >1000, got %d",
+        elem_multi4->id);
+    result = dpl_remove_at_reference(list_ten_elements_deepCopy, ref_multi9, true);
+    ck_assert_msg(result == list_ten_elements_deepCopy,
+        "Failure: expected %p, got %p",
+        list_ten_elements_deepCopy, result);
+    ck_assert_msg(dpl_size(result) == 7,
+        "Failure: expected 7, got %d",
+        dpl_size(result));
+    ck_assert_msg(elem_multi9->id > 1000,
+        "Failure: expected el_multi9 to be freed and thus id >1000, got %d",
+        elem_multi9->id);
+
+} END_TEST
+
+/**********************************************************************************************
+ * -------------------------------- REMOVE_ELEMENT --------------------------------------------
+***********************************************************************************************/
+START_TEST (test_removeElementNULL) {
+    dplist_t* result = dpl_remove_element(list_null, el_one, true);
+    ck_assert_msg(result == list_null,
+        "Failure: expected NULL, got %p",
+        result);
+    ck_assert_msg(dpl_size(list_null) == -1,
+        "Failure: expected -1, got %d",
+        dpl_size(list_null));
+    ck_assert_msg(strcmp(el_one->name, "el_one") ==0,
+        "Failure: expected \"el_one\", got %s",
+        el_one->name);
+} END_TEST
+
+START_TEST (test_removeElementEmpty) {
+    dplist_t* result = dpl_remove_element(list_empty, el_one, true);
+    ck_assert_msg(result == list_empty,
+        "Failure: expected NULL, got %p",
+        result);
+    ck_assert_msg(dpl_size(list_empty) == 0,
+        "Failure: expected 0, got %d",
+        dpl_size(list_empty));
+    ck_assert_msg(strcmp(el_one->name, "el_one") ==0,
+        "Failure: expected \"el_one\", got %s",
+        el_one->name);
+} END_TEST
+
+START_TEST (test_removeElementOne) {
+    dplist_node_t* ref_one = dpl_get_reference_at_index(list_one_element_deepCopy, 0);
+    my_element_t* elem_one = dpl_get_element_at_reference(list_one_element_deepCopy, ref_one);
+    dplist_t* result = dpl_remove_element(list_one_element_deepCopy, elem_one, true);
+    ck_assert_msg(result == list_one_element_deepCopy,
+        "Failure: expected %p, got %p",
+        list_one_element_deepCopy, result);
+    ck_assert_msg(dpl_size(result) == 0,
+        "Failure: expected 0, got %d",
+        dpl_size(result));
+    ck_assert_msg(elem_one->id > 1000,
+        "Failure: expected elem_one to be freed and thus id >1000, got %d",
+        el_one->id);
+    dpl_print(list_ten_elements_deepCopy);
+} END_TEST
+
+START_TEST (test_removeElementMulti) {
+    dplist_node_t* ref_multi0 = dpl_get_reference_at_index(list_ten_elements_deepCopy, 0);
+    my_element_t* elem_multi0 = dpl_get_element_at_reference(list_ten_elements_deepCopy, ref_multi0);
+    dplist_node_t* ref_multi4 = dpl_get_reference_at_index(list_ten_elements_deepCopy, 4);
+    my_element_t* elem_multi4 = dpl_get_element_at_reference(list_ten_elements_deepCopy, ref_multi4);
+    dplist_node_t* ref_multi9 = dpl_get_reference_at_index(list_ten_elements_deepCopy, 9);
+    my_element_t* elem_multi9 = dpl_get_element_at_reference(list_ten_elements_deepCopy, ref_multi9);
+    
+    dplist_t* result = dpl_remove_element(list_ten_elements_deepCopy, elem_multi0, true);
+    ck_assert_msg(result == list_ten_elements_deepCopy,
+        "Failure: expected %p, got %p",
+        list_ten_elements_deepCopy, result);
+    ck_assert_msg(dpl_size(result) == 9,
+        "Failure: expected 9, got %d",
+        dpl_size(result));
+    ck_assert_msg(elem_multi0->id > 1000,
+        "Failure: expected el_multi0 to be freed and thus id >1000, got %d",
+        elem_multi0->id);
+    result = dpl_remove_element(list_ten_elements_deepCopy, elem_multi4, true);
+    ck_assert_msg(result == list_ten_elements_deepCopy,
+        "Failure: expected %p, got %p",
+        list_ten_elements_deepCopy, result);
+    ck_assert_msg(dpl_size(result) == 8,
+        "Failure: expected 8, got %d",
+        dpl_size(result));
+    ck_assert_msg(elem_multi4->id > 1000,
+        "Failure: expected el_multi4 to be freed and thus id >1000, got %d",
+        elem_multi4->id);
+    result = dpl_remove_element(list_ten_elements_deepCopy, elem_multi9, true);
+    ck_assert_msg(result == list_ten_elements_deepCopy,
+        "Failure: expected %p, got %p",
+        list_ten_elements_deepCopy, result);
+    ck_assert_msg(dpl_size(result) == 7,
+        "Failure: expected 7, got %d",
+        dpl_size(result));
+    ck_assert_msg(elem_multi9->id > 1000,
+        "Failure: expected el_multi9 to be freed and thus id >1000, got %d",
+        elem_multi9->id);
+  
+
+} END_TEST
+
+
+
 int main(void) {
     Suite *s1 = suite_create("LIST_EX4");
     TCase *tc1_1 = tcase_create("Core");
@@ -1235,6 +1847,60 @@ int main(void) {
     tcase_add_test(tc1_1, test_getIndexOfElementMulti_pointer);
     tcase_add_test(tc1_1, test_getIndexOfElementMulti_deepCopy);
 
+    // GetFirstReference
+    tcase_add_test(tc1_1, test_getFirstReferenceNULL);
+    tcase_add_test(tc1_1, test_getFirstReferenceEmpty);
+    tcase_add_test(tc1_1, test_getFirstReferenceOne_pointer);
+    tcase_add_test(tc1_1, test_getFirstReferenceMulti_deepCopy);
+
+    // GetLastReference
+    tcase_add_test(tc1_1, test_getLastReferenceNULL);
+    tcase_add_test(tc1_1, test_getLastReferenceEmpty);
+    tcase_add_test(tc1_1, test_getLastReferenceOne_pointer);
+    tcase_add_test(tc1_1, test_getLastReferenceMulti_deepCopy);
+
+    // GetPreviousReference
+    tcase_add_test(tc1_1, test_getPreviousReferenceNULL);
+    tcase_add_test(tc1_1, test_getPreviousReferenceEmpty);
+    tcase_add_test(tc1_1, test_getPreviousReferenceOne);
+    tcase_add_test(tc1_1, test_getPreviousReferenceMulti);
+    
+    // GetReferenceOfelement
+    tcase_add_test(tc1_1, test_getReferenceOfElementNULL);
+    tcase_add_test(tc1_1, test_getReferenceOfElementEmpty);
+    tcase_add_test(tc1_1, test_getReferenceOfElementOne);
+    tcase_add_test(tc1_1, test_getReferenceOfElementMulti);
+
+    // GetIndexReference
+    tcase_add_test(tc1_1, test_getIndexOfReferenceNULL);
+    tcase_add_test(tc1_1, test_getIndexOfReferenceEmpty);
+    tcase_add_test(tc1_1, test_getIndexOfReferenceOne);
+    tcase_add_test(tc1_1, test_getIndexOfReferenceMulti);
+
+    // InsertAtReference 
+    tcase_add_test(tc1_1, test_insertAtReferenceNULL);
+    tcase_add_test(tc1_1, test_insertAtReferenceEmpty);
+    tcase_add_test(tc1_1, test_insertAtReferenceOne);
+    tcase_add_test(tc1_1, test_insertAtReferenceMulti);
+
+    // InsertSorted
+    tcase_add_test(tc1_1, test_insertSortedNULL);
+    tcase_add_test(tc1_1, test_insertSortedEmpty);
+    tcase_add_test(tc1_1, test_insertSortedOne);
+    tcase_add_test(tc1_1, test_insertSortedMulti);
+
+    // RemoveAtReference
+    tcase_add_test(tc1_1, test_removeAtReferenceNULL);
+    tcase_add_test(tc1_1, test_removeAtReferenceEmpty);
+    tcase_add_test(tc1_1, test_removeAtReferenceOne);
+    tcase_add_test(tc1_1, test_removeAtReferenceMulti);
+
+    // RemoveElement
+    tcase_add_test(tc1_1, test_removeElementNULL);
+    tcase_add_test(tc1_1, test_removeElementEmpty);
+    tcase_add_test(tc1_1, test_removeElementOne);
+    tcase_add_test(tc1_1, test_removeElementMulti);
+
     srunner_run_all(sr, CK_VERBOSE);
 
     nf = srunner_ntests_failed(sr);
@@ -1242,6 +1908,7 @@ int main(void) {
 
     return nf == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
+
 
 
 

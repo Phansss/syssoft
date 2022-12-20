@@ -60,7 +60,7 @@ struct dplist {
     void (*element_print)(void *element);
 };
 
-
+static bool dpl_is_sorted(dplist_t *list);
 dplist_t *dpl_create(// callback functions
         void *(*element_copy)(void *src_element),
         void (*element_free)(void **element),

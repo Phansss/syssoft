@@ -17,7 +17,7 @@ typedef time_t sensor_ts_t;         // UTC timestamp as returned by time() - not
  */
 typedef struct {
     sensor_id_t id;         /** < sensor id */
-    sensor_value_t value;   /** < sensor value */
+    sensor_value_t value;   /** < sensor value (temperature) */
     sensor_ts_t ts;         /** < sensor timestamp */
 } sensor_data_t;
 

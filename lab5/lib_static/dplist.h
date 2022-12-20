@@ -5,8 +5,6 @@
 #ifndef _DPLIST_H_
 #define _DPLIST_H_
 
-typedef void* element_t;
-
 typedef enum {
     false, true
 } bool; // or use C99 #include <stdbool.h>
@@ -29,11 +27,11 @@ typedef struct dplist_node dplist_node_t;
  * \param element_compare callback function to compare two element elements; returns -1 if x<y, 0 if x==y, or 1 if x>y
  * \return a pointer to a newly-allocated and initialized list.
  */
-dplist_t * dpl_create(
+dplist_t *dpl_create(
         void* (*element_copy)(void *element),
         void (*element_free)(void **element),
         int (*element_compare)(void *x, void *y),
-        void (*element_print)(void *element)
+        void (*element_print)(void* element)
 );
 
 /** Deletes all elements in the list
@@ -122,6 +120,9 @@ int dpl_get_index_of_element(dplist_t *list, void *element);
  * \return the element contained in the list node or NULL
  */
 void *dpl_get_element_at_reference(dplist_t *list, dplist_node_t *reference);
+
+
+//*** HERE STARTS THE EXTRA SET OF OPERATORS ***//
 
 
 /** Returns a reference to the first list node of the list.
@@ -230,15 +231,6 @@ dplist_t *dpl_remove_at_reference(dplist_t *list, dplist_node_t *reference, bool
  */
 dplist_t *dpl_remove_element(dplist_t *list, void *element, bool free_element);
 
-/**
- * Prints the elements in the list using the callback function element_print() defined by the user.
-*/
-void dpl_print(dplist_t *list);
-
-/**
- * 
-*/
-static bool dpl_is_sorted(dplist_t *list);
+// ---- you can add your extra operators here ----//
 
 #endif  // _DPLIST_H_
-

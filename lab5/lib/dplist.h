@@ -30,7 +30,8 @@ typedef struct dplist_node dplist_node_t;
 dplist_t *dpl_create(
         void* (*element_copy)(void *element),
         void (*element_free)(void **element),
-        int (*element_compare)(void *x, void *y)
+        int (*element_compare)(void *x, void *y),
+        void (*element_print)(void* element)
 );
 
 /** Deletes all elements in the list
@@ -231,5 +232,9 @@ dplist_t *dpl_remove_at_reference(dplist_t *list, dplist_node_t *reference, bool
 dplist_t *dpl_remove_element(dplist_t *list, void *element, bool free_element);
 
 // ---- you can add your extra operators here ----//
+/**
+ * Prints the elements in the list using the callback function element_print() defined by the user.
+*/
+void dpl_print(dplist_t *list);
 
 #endif  // _DPLIST_H_
