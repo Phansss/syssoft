@@ -21,7 +21,7 @@ SHELL = /bin/sh
 LDCONFIG = ldconfig
 FLAGS = -std=c11 -Werror -lm -DSET_MAX_TEMP=27.96 -DSET_MIN_TEMP=14.01 $(shell pkg-config --cflags --libs check)
 
-ex3: 
+ex3:
 	@echo -e '\n*******************************'
 	@echo -e '*** Compiling for DATAMGR TEST ***'
 	@echo -e '*******************************'
@@ -32,7 +32,7 @@ ex3:
 	@echo -e '*************************'
 	./build/datamgr_test
 
-test_debug :
+test_debug:
 	@echo -e '\n*******************************'
 	@echo -e '*** Compiling for UNIT TEST ***'
 	@echo -e '*******************************'

@@ -1,7 +1,7 @@
 /**
  * \author Luc Vandeurzen
  */
-
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include "config.h"
 #include "lib/tcpsock.h"
+#include <inttypes.h>
 
 // conditional compilation option to control the number of measurements this sensor node wil generate
 #if (LOOPS > 1)
