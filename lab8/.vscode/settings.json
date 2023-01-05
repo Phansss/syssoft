@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "type_traits": "c",
+        "limits": "c",
+        "pthread.h": "c",
+        "sbuffer.h": "c",
+        "semaphore.h": "c",
+        "new": "c"
+    }
+}

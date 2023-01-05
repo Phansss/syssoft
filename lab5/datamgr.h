@@ -27,7 +27,7 @@
 */
 typedef struct {
     uint16_t rid;                           // room id
-    sensor_id_t sid;                        // sensor data
+    sensor_id_t sid;                        // sensor id
     sensor_value_t ravg;                    // Running average
     sensor_value_t rvalues[RUN_AVG_LENGTH];   // Running values
     sensor_ts_t lm;                         // timestamp last modified

@@ -1,0 +1,45 @@
+
+
+Thu Jan  5 18:21:55 2023
+Command line: TestDisk
+
+TestDisk 7.1, Data Recovery Utility, July 2019
+Christophe GRENIER <grenier@cgsecurity.org>
+https://www.cgsecurity.org
+OS: Linux, kernel 6.0.9-302.rog.fc37.x86_64 (#1 SMP PREEMPT_DYNAMIC Thu Nov 17 23:52:50 UTC 2022) x86_64
+Compiler: GCC 12.1
+ext2fs lib: 1.46.5, ntfs lib: libntfs-3g, reiserfs lib: none, ewf lib: 20140608, curses lib: ncurses 6.3
+Warning: can't get size for Disk /dev/mapper/control - 0 B - 0 sectors, sector size=512
+Warning: can't get size for Disk /dev/loop27 - 0 B - 0 sectors, sector size=512
+Hard disk list
+Disk /dev/loop0 - 85 MB / 81 MiB - 166664 sectors (RO), sector size=512
+Disk /dev/loop1 - 52 MB / 49 MiB - 101624 sectors (RO), sector size=512
+Disk /dev/loop10 - 76 MB / 72 MiB - 149320 sectors (RO), sector size=512
+Disk /dev/loop11 - 139 MB / 132 MiB - 271560 sectors (RO), sector size=512
+Disk /dev/loop12 - 66 MB / 63 MiB - 129584 sectors (RO), sector size=512
+Disk /dev/loop13 - 177 MB / 169 MiB - 346968 sectors (RO), sector size=512
+Disk /dev/loop14 - 66 MB / 63 MiB - 129496 sectors (RO), sector size=512
+Disk /dev/loop15 - 172 MB / 164 MiB - 337424 sectors (RO), sector size=512
+Disk /dev/loop16 - 48 MB / 45 MiB - 94064 sectors (RO), sector size=512
+Disk /dev/loop17 - 139 MB / 132 MiB - 271600 sectors (RO), sector size=512
+Disk /dev/loop18 - 363 MB / 346 MiB - 709280 sectors (RO), sector size=512
+Disk /dev/loop19 - 1214 MB / 1158 MiB - 2372680 sectors (RO), sector size=512
+Disk /dev/loop2 - 114 MB / 108 MiB - 222808 sectors (RO), sector size=512
+Disk /dev/loop20 - 4096 B - 8 sectors (RO), sector size=512
+Disk /dev/loop21 - 467 MB / 446 MiB - 913992 sectors (RO), sector size=512
+Disk /dev/loop22 - 1209 MB / 1153 MiB - 2362696 sectors (RO), sector size=512
+Disk /dev/loop23 - 58 MB / 55 MiB - 113888 sectors (RO), sector size=512
+Disk /dev/loop24 - 58 MB / 55 MiB - 113896 sectors (RO), sector size=512
+Disk /dev/loop25 - 114 MB / 108 MiB - 222808 sectors (RO), sector size=512
+Disk /dev/loop26 - 106 MB / 101 MiB - 208128 sectors (RO), sector size=512
+Disk /dev/loop3 - 76 MB / 72 MiB - 149216 sectors (RO), sector size=512
+Disk /dev/loop4 - 96 MB / 91 MiB - 187776 sectors (RO), sector size=512
+Disk /dev/loop5 - 106 MB / 101 MiB - 208104 sectors (RO), sector size=512
+Disk /dev/loop6 - 85 MB / 81 MiB - 167656 sectors (RO), sector size=512
+Disk /dev/loop7 - 48 MB / 45 MiB - 94056 sectors (RO), sector size=512
+Disk /dev/loop8 - 122 MB / 116 MiB - 238984 sectors (RO), sector size=512
+Disk /dev/loop9 - 91 MB / 87 MiB - 178648 sectors (RO), sector size=512
+Disk /dev/nvme0n1 - 1024 GB / 953 GiB - CHS 976762 64 32, sector size=512
+
+
+TestDisk exited normally.

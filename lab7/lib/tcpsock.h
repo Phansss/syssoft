@@ -66,7 +66,7 @@ int tcp_close(tcpsock_t **socket);
  * If memory allocation for the new socket fails, TCP_MEMORY_ERROR is returned
  * If a socket operation (socket, listen, bind, accept, ...) fails, TCP_SOCKOP_ERROR is returned
  * If 'socket' is NULL or not yet bound, TCP_SOCKET_ERROR is returned
- * \param socket the socket that needs to be monitored for a new incomming connection
+ * \param socket the socket that needs to be monitored for a new incoming connection
  * \param new_socket a double pointer, that will be filled out with the newly created socket for the connection with the client
  * \return TCP_NO_ERROR if no error occurs during execution
  */
