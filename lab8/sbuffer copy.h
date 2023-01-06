@@ -11,31 +11,6 @@
 #define SBUFFER_SUCCESS 0
 #define SBUFFER_NO_DATA 1
 
-#define DATA_PROCESS_SUCCESS 0
-#define DATA_PROCESS_ERROR 1
-
-#ifndef SBUFF_READER_THREADS
-#error "number of reader threads not defined"
-#endif
-#ifndef SBUFF_WRITER_THREADS
-#error "number of reader threads not defined"
-#endif
-
-
-#ifdef SBUFF_DEBUG
-pid_t tid; 
-#define SBUFF_DEBUGGER(...) SBUFF_DEBUG_PRINTF(__VA_ARGS__, " ");                                  
-#define SBUFF_DEBUG_PRINTF(fmt,...) 									                                                    \
-        do {                                                                                                                \
-            tid = syscall(__NR_gettid);                                                                                     \
-            fprintf(stderr, "\nDEBUG_SBUFF [%s:%d] in %s_(%d): "fmt"%s",  __FILE__,__LINE__,__func__ ,tid, __VA_ARGS__);    \
-            fflush(stderr);                                                                                                 \
-            }while(0)
-#else
-#define SBUFF_DEBUGGER(...) SBUFF_DEBUG_PRINTF(__VA_ARGS__, " ");
-#define SBUFF_DEBUG_PRINTF(fmt,...) (void)0
-#endif
-
 #define PTH_create( a, b, c, d ) \
     (pthread_create( (a), (b), (c), (d) ) != 0 ? abort() : (void)0 )
 
@@ -58,33 +33,10 @@ typedef struct sbuffer sbuffer_t;
 /**
  * attributes for the threads to access shared resources
  */
-
-
-
-
-
-typedef struct dataprocessor_arg {
-    sensor_data_t* data;    // pointer to data struct initalized on thread stack.
-    // void* other;   // user defined struct containing other arguments to process the data
-} dataprocessor_arg_t;
-
-/** typefunc to define functions that receive/send data in and out of the sbuffer. 
- *  the sensor data is initialized on the writer stack and can be retrieved/modified 
- * using the pointer. 
- * The void argument is used for data processing arguments
-*/
-typedef int (*Dataprocessingfunc)(dataprocessor_arg_t*);
-
-typedef struct sbuff_thread_arg {
-    sbuffer_t* sbuffer;
-    Dataprocessingfunc data_processor;            // pointer to data struct initalized on thread stack.
-    dataprocessor_arg_t* data_processor_arguments; // void* other;   // user defined struct containing other arguments to process the data
-} sbuff_thread_arg_t;
-
-
-
-
-
+typedef struct thread_attr {
+    FILE* binary_file;  /**< pointer to the binary file to read from (sbuffer writer thread) or write to (sbuffer reader thread)*/
+    sbuffer_t* sbuffer;  /**< pointer to the shared sbuffer */
+} thread_attr_t;
 
 /**
  * Allocates and initializes a new shared buffer

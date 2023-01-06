@@ -1,6 +1,8 @@
 /**
  * \author Pieter Hanssens
  */
+
+
 #define _GNU_SOURCE
 
 #include <stdlib.h>
@@ -10,31 +12,33 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include "errmacros.h"
+#include <assert.h>
+#include "config.h"
 
 
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/syscall.h>
 
-#define NO_OF_READERS 2
 
-extern sem_t semaphore;
-extern pthread_barrier_t barrier;
-extern pthread_barrier_t read_sync_finalize_1;
-extern pthread_barrier_t read_sync_finalize_2;
-extern pthread_rwlock_t rwlock;
-extern pthread_mutex_t mutex;
-extern pthread_mutex_t write_bin_out;
-extern pthread_rwlock_t sbuffered_cleanup;
-extern sbuffer_t* buffer;
-extern pthread_cond_t writing_stopped;
+                                                                                
 
-int writing;
+pthread_barrier_t sbuff_start_readers; // initialize in initializer.
+pthread_barrier_t sbuff_main_rw_sync; // initialize in initializer.
+pthread_barrier_t sbuff_reader_sync; // initialize in initializer
+pthread_mutex_t sbuff_reader_removing = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t sbuff_reader_processing = PTHREAD_MUTEX_INITIALIZER;
+pthread_rwlock_t sbuff_writer_inserting = PTHREAD_RWLOCK_INITIALIZER;
+pthread_cond_t sbuff_writer_buffered = PTHREAD_COND_INITIALIZER;
+sem_t sbuff_node_count; // initialized in writer
+
+sbuffer_t* buffer = NULL;
+
 int count;
 
-pthread_t writer = 0;
-pthread_t reader1 = 1;
-pthread_t reader2 = 2;
+pthread_t writer;
+pthread_t reader1;
+pthread_t reader2;
 extern FILE* binary_file_out;
 //pthread_t reader2;
 
@@ -45,7 +49,6 @@ typedef struct sbuffer_node {
     struct sbuffer_node *next;  /**< a pointer to the next node*/
     sensor_data_t data;         /**< a structure containing the data */
 } sbuffer_node_t;
-
 
 /**
  * a structure to keep track of the buffer
@@ -82,26 +85,12 @@ int sbuffer_remove(sbuffer_t *buffer, sensor_data_t *data, int cleanup) {
     sbuffer_node_t *dummy;
     if (buffer == NULL) return SBUFFER_FAILURE;
     if (buffer->head == NULL) return SBUFFER_NO_DATA;
-    
-    switch (cleanup){
-        case 0:                                                 // if not cleanup, lock data when reading
-            //printf("Thread %d aquiring mutex lock\n", x);
-            pthread_mutex_lock(&mutex);
-            //printf("Thread %d aquired mutex lock\n", x);
-            *data = buffer->head->data;
-            dummy = buffer->head;
-            buffer->head = buffer->head->next;
-            //printf("Thread %d unlocking mutex lock\n", x);
-            pthread_mutex_unlock(&mutex);
-            break;
-        case 1:                                                 // if cleanup, no mutex needed, only one reader thread.
-            *data = buffer->head->data;
-            dummy = buffer->head;
-            buffer->head = buffer->head->next;
-        default:
-            DEBUG_PRINTF("Error during sbuffer_remove()");
-    }
-
+             // if not cleanup, lock data when reading
+    pthread_mutex_lock(&sbuff_reader_removing);
+    *data = buffer->head->data;
+    dummy = buffer->head;
+    buffer->head = buffer->head->next;
+    pthread_mutex_unlock(&sbuff_reader_removing);
     free(dummy);
     return SBUFFER_SUCCESS;
 }
@@ -114,9 +103,6 @@ int sbuffer_insert(sbuffer_t *buffer, sensor_data_t *data) {
     dummy->data = *data;
     dummy->next = NULL;
 
-    // WRITE LOCK
-    //printf("Aquiring WRITE lock\n");
-    //printf("WRITE lock aquired\n");
     if (buffer->tail == NULL) // buffer empty 
     {   
         buffer->head = buffer->tail = dummy;
@@ -126,7 +112,7 @@ int sbuffer_insert(sbuffer_t *buffer, sensor_data_t *data) {
         buffer->tail->next = dummy;
         buffer->tail = buffer->tail->next;
     }
-    //end write lock
+
     return SBUFFER_SUCCESS;
 }
 
@@ -146,133 +132,101 @@ int sbuffer_size(sbuffer_t* buffer) {
     return size;
 }
 
+pid_t sbuffer_get_tid() {
+    return syscall(__NR_gettid);
+}
 
 
-
-// writer thread
 void *writer_thread(void *arg) {
+    SBUFF_DEBUGGER("Writer thread started")
     sensor_data_t data = {.id = 0, .value = 0, .ts = 0};
+    assert((dataprocessor_arg_t*)(((sbuff_thread_arg_t*)arg)->data_processor_arguments)->data == NULL); // dataprocessor arg must be initialized as null pointer
+    ((dataprocessor_arg_t*)(((sbuff_thread_arg_t*)arg)->data_processor_arguments))->data = &data;       //pass stack data structure to user callback function.
     int sbuff_count = 0;
-    int sem_val=0;
-    writing = 1;
-
-
-    //pthread_rwlock_wrlock(&rwlock);
-    while (fread(&(data.id), sizeof(sensor_id_t), 1, ((thread_attr_t*)arg)->binary_file)!= 0) {
-        printf("inserting sbuff\n");
-        fread(&(data.value), sizeof(sensor_value_t), 1, ((thread_attr_t*)arg)->binary_file);
-        fread(&(data.ts), sizeof(sensor_ts_t), 1, ((thread_attr_t*)arg)->binary_file);
-        sbuffer_insert(((thread_attr_t*)arg)->sbuffer, &data);
+    
+    //Call user callback data processor
+    SBUFF_DEBUGGER("Writer starts buffering.")
+    while ((((sbuff_thread_arg_t*)arg)->data_processor)(((sbuff_thread_arg_t*)arg)->data_processor_arguments)!= DATA_PROCESS_ERROR) {
+        sbuffer_insert(((sbuff_thread_arg_t*)arg)->sbuffer, &data);
         sbuff_count++;
-        if (sbuff_count == NO_OF_READERS + 1) break; // buffer until sbuffer contians NO_OF_READERS + 1 data nodes
-
+        if (sbuff_count == SBUFF_READER_THREADS + 1) break; // buffer until sbuffer contians SBUFF_READER_THREADS + 1 data nodes
     }
-    pthread_rwlock_wrlock(&sbuffered_cleanup); //SBUFFERED LOCK ON
-    printf("Sbuffer buffered %d data elements. Starting to read..\n", sbuffer_size(((thread_attr_t*)arg)->sbuffer));    
+    SBUFF_DEBUGGER("Writer buffered %d sbuffer nodes.", sbuffer_size(((sbuff_thread_arg_t*)arg)->sbuffer))
 
-    if(sem_init(&semaphore, 0, 0) == -1) DEBUG_PRINTF("Pthread semaphore init error\n"); // create semaphore
-    thread_attr_t reader_attr = {.binary_file = binary_file_out, .sbuffer = buffer}; // Resources for reader thread
-
-    PTH_create(&reader1, NULL, reader_thread, &reader_attr); // Start reading (tries sem and yields immediately (sem ==0))
-    PTH_create(&reader2, NULL, reader_thread, &reader_attr); // Start reading (tries sem and yields immediately (sem ==0))
-    
-    printf("Continue writing after buffering\n");
-    while (fread(&(data.id), sizeof(sensor_id_t), 1, ((thread_attr_t*)arg)->binary_file)!= 0) {
-        fread(&(data.value), sizeof(sensor_value_t), 1, ((thread_attr_t*)arg)->binary_file);
-        fread(&(data.ts), sizeof(sensor_ts_t), 1, ((thread_attr_t*)arg)->binary_file); 
-        
-        //printf("inserting buff\n");
-        sbuffer_insert(((thread_attr_t*)arg)->sbuffer, &data);
-        //release semaphore
-        sem_post(&semaphore);
-        sched_yield();        
+    // TO DO:   implement mechanism so that multiple writers can lock the rwlock!
+    SBUFF_DEBUGGER("Writer lock rwlock 'sbuff_writer_inserting'")
+    pthread_rwlock_wrlock(&sbuff_writer_inserting); //SBUFFERED LOCK ON
+    SBUFF_DEBUGGER("Writer blocking on barrier 'sbuff_start_readers'")
+    pthread_barrier_wait(&sbuff_start_readers);
+    SBUFF_DEBUGGER("Writer continue writing")
+    while ((((sbuff_thread_arg_t*)arg)->data_processor)(((sbuff_thread_arg_t*)arg)->data_processor_arguments)!= DATA_PROCESS_ERROR) {
+        sbuffer_insert(((sbuff_thread_arg_t*)arg)->sbuffer, &data);
+        sbuff_count++;
+        sem_post(&sbuff_node_count);
+        sched_yield();         
     }
+    SBUFF_DEBUGGER("Writer finished. Wrote %d sbuffer nodes", sbuff_count)
+      
+    // TO DO:   implement mechanism so that multiple writers can unlock the rwlock! (see above)
+    SBUFF_DEBUGGER("Writer unlocking for buffered cleanup")
+    pthread_rwlock_unlock(&sbuff_writer_inserting);
     
-    sem_getvalue(&semaphore, &sem_val);
-    //printf("sbuffer size (sem value): %d\n", sem_val);
-    
-    printf("WRITER THREAD: unlocked and waiting to exit (%d remaining sems)\n", sem_val);    
-    pthread_rwlock_unlock(&sbuffered_cleanup);               //SBUFFERED LOCK OFF
-    //pthread_rwlock_unlock(&rwlock);
-    int remaining_sbuff;
-    remaining_sbuff = sbuffer_size(((thread_attr_t*)arg)->sbuffer);
-    printf("WRITER THREAD: Remaining sbuffer elements: %d\n", remaining_sbuff);
-   
-    usleep(500);
-    pthread_barrier_wait(&barrier);
-    printf("writer exiting\n");
+    SBUFF_DEBUGGER("Writer exiting")
     pthread_exit(0);
 }
 
-// reader thread
 void *reader_thread(void *arg) {
+    SBUFF_DEBUGGER("Reader thread started")
     sensor_data_t data = {.id = 0, .value = 0, .ts = 0}; // data is thread safe variable
-    //pid_t x = syscall(__NR_gettid);
+    assert((dataprocessor_arg_t*)(((sbuff_thread_arg_t*)arg)->data_processor_arguments)->data == NULL); // dataprocessor arg must be initialized as null pointer
+    ((dataprocessor_arg_t*)(((sbuff_thread_arg_t*)arg)->data_processor_arguments))->data = &data;       // pass stack data structure to user callback function.
+    SBUFF_DEBUGGER("Reader blocking on barrier 'sbuff_start_readers'")
+    pthread_barrier_wait(&sbuff_start_readers);                                                         // Wait until all writers have buffered.
+
     int result = 0;
-    //int sem_val;
-    int remaining_sbuff;
+    SBUFF_DEBUGGER("Reader starts reading ")
     while(1) {
-        if (pthread_rwlock_tryrdlock(&sbuffered_cleanup) == EBUSY) {               // writer still busy; lock not acquired.
-            if (sem_trywait(&semaphore) == 0) {                                    // block until resources are available in the sbuffer
-                sbuffer_remove(((thread_attr_t*)arg)->sbuffer, &data, 0);       // Remove node at the start of the sbuffer -> no interference with inserted nodes at the end
+        if (pthread_rwlock_tryrdlock(&sbuff_writer_inserting) == EBUSY) {               // writer still busy; lock not acquired.
+            if (sem_trywait(&sbuff_node_count) == 0) {                                  // block until resources are available in the sbuffer
+                sbuffer_remove(((sbuff_thread_arg_t*)arg)->sbuffer, &data, 0);          // Remove node at the start of the sbuffer -> no interference with inserted nodes at the end
                 //printf("(%d): sensor id = %" PRIu16 " - temperature = %g - timestamp = %ld\n", x, data.id, data.value, (long int) data.ts);
-                //pthread_mutex_lock(&write_bin_out);
-                fprintf(((thread_attr_t*)arg)->binary_file,"%hd %lf %ld\n",data.id,data.value, data.ts);
-                //printf("READER THREAD %d has written data to bin out\n", x);
+                //printf("READER: blocking on sbuff_reader_processing\n");
+                pthread_mutex_lock(&sbuff_reader_processing);
+                (((sbuff_thread_arg_t*)arg)->data_processor)(((sbuff_thread_arg_t*)arg)->data_processor_arguments);
                 count++;
-                //pthread_mutex_unlock(&write_bin_out);
+                pthread_mutex_unlock(&sbuff_reader_processing);
                 continue;
-            } else if (pthread_rwlock_tryrdlock(&sbuffered_cleanup) == EBUSY) {
+            } else if (pthread_rwlock_tryrdlock(&sbuff_writer_inserting) == EBUSY) {
                 continue;
             } else {
-                pthread_rwlock_unlock(&sbuffered_cleanup);
-                
-                //printf("THREAD %d blocking on read_sync_finalize_1\n", x);
-                //result = pthread_barrier_wait(&read_sync_finalize_1);                      // go to else via lock when other readers have caught up
-                //printf("THREAD %d continuing on read_sync_finalize_1\n", x);
-                                                                    
+                SBUFF_DEBUGGER("Reader unlock rwlock 'sbuff_writer_inserting'")
+                pthread_rwlock_unlock(&sbuff_writer_inserting); // current thread jumps to else                                                  
             }
         } else {
-            pthread_rwlock_unlock(&sbuffered_cleanup);   
-            //printf("THREAD %d blocking on read_sync_finalize_2\n", x);                        // LOCK ACQUIRED! -> unlock for other reader threads.
-            result = pthread_barrier_wait(&read_sync_finalize_2);                 // wait for other readers!
-            //printf("THREAD %d continuing on read_sync_finalize_2\n", x);
-            if(result == 0) {    
-                //printf("THREAD %d blocked on main barrier\n", x);                                               //  close every reader thread except 1.
-                pthread_barrier_wait(&barrier);
-                //printf("THREAD %d shutting down\n", x);                                  //  signal the main barrier that this thread is about to close.
+            SBUFF_DEBUGGER("Reader unlock rwlock 'sbuff_writer_inserting'")
+            pthread_rwlock_unlock(&sbuff_writer_inserting);  // LOCK ACQUIRED! -> unlock for other reader threads. 
+            SBUFF_DEBUGGER("Reader blocking on 'sbuff_reader_sync'")
+            result = pthread_barrier_wait(&sbuff_reader_sync);                 // wait for other reader!
+            if(result == 0) {    //  close every reader thread except 1
+                SBUFF_DEBUGGER("Reader exiting'")                             
                 pthread_exit(0);
             }
-            remaining_sbuff = sbuffer_size(((thread_attr_t*)arg)->sbuffer);
-            //printf("THREAD %d: Remaining sbuffer elements: %d\n",x, remaining_sbuff);
-            //printf("THREAD %d blocked on main barrier\n", x);
-            while(remaining_sbuff > 0) {
-                remaining_sbuff--;
-                sbuffer_remove(((thread_attr_t*)arg)->sbuffer, &data, 1);
-                fprintf(((thread_attr_t*)arg)->binary_file,"%hd %lf %ld\n",data.id,data.value, data.ts);
+            SBUFF_DEBUGGER("Reader cleaning up %d sbuffer nodes'", sbuffer_size(((sbuff_thread_arg_t*)arg)->sbuffer))
+            while(sbuffer_size(((sbuff_thread_arg_t*)arg)->sbuffer) > 0) {
+                sbuffer_remove(((sbuff_thread_arg_t*)arg)->sbuffer, &data, 1);
+                (((sbuff_thread_arg_t*)arg)->data_processor)(((sbuff_thread_arg_t*)arg)->data_processor_arguments);               
                 count++;
-            } 
-            pthread_barrier_wait(&barrier); 
-            //remaining_sbuff = sbuffer_size(((thread_attr_t*)arg)->sbuffer);
-            printf("written %d times\n", count);
-            //printf("THREAD %d: Remaining sbuffer elements: %d\n",x, remaining_sbuff);
-            //printf("THREAD %d shutting down\n", x); 
+            }
+
+            SBUFF_DEBUGGER("Reader exiting'") 
             pthread_exit(0);
-            
-            
-            
-            //printf("result_PTHREAD_...= %d\n", PTHREAD_BARRIER_SERIAL_THREAD);
-            //printf("result= %d\n", result);
         }
-        
     }
-    /* printf("THREAD %d: Remaining sbuffer elements: %d\n",x, remaining_sbuff);
-        //sem_getvalue(&semaphore, &sem_val);
-        //printf("Thread %d sbuffer size (sem value): %d\n",x, sem_val);
-        //printf("Thread %d synced and waiting to exit\n", x);
-        printf("THREAD %d: blocked\n",x);
-        pthread_barrier_wait(&barrier);
-        pthread_exit(0); */
+
+    
+
 }
+
+
 
 

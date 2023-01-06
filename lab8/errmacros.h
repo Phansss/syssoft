@@ -71,7 +71,7 @@
 
 
 												
-
+#define DEBUG
 
 #ifdef DEBUG
 #define DEBUG_PRINTF(...) 									                                        \

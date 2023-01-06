@@ -5,6 +5,11 @@
 #ifndef _CONFIG_H_
 #define _CONFIG_H_
 
+#define SBUFF_READER_THREADS 2
+#define SBUFF_WRITER_THREADS 1
+
+#define SBUFF_DEBUG
+
 #include <stdint.h>
 #include <time.h>
 
