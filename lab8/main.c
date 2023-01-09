@@ -1,17 +1,23 @@
 #define _GNU_SOURCE
 
 
+#include "config.h"
+#include "sbuffer.h"
 
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include "sbuffer.h"
 #include <pthread.h>
 #include <semaphore.h>
 #include <inttypes.h>
 #define DEBUG
 #define DEB_EXIT
 #include "errmacros.h"
+#include "lib/dplist.h"
+
+
+#include "main_debug.h"
+
 
 #define WRITER_DATA_IN_EMPTY -1
 
@@ -28,26 +34,16 @@ typedef struct fprintf_attr {
   FILE* data_out;
 } fprintf_attr_t;
 
-
-//static pthread_rwlock_t rwlock  = PTHREAD_RWLOCK_INITIALIZER;
-
 FILE* binary_file_in;
 FILE* binary_file_out;
 
-extern pthread_barrier_t sbuff_reader_sync;
-extern pthread_barrier_t sbuff_start_readers;
-extern pthread_mutex_t sbuff_reader_removing;
-extern pthread_mutex_t sbuff_reader_processing;
-extern pthread_rwlock_t sbuff_writer_inserting;
-extern pthread_cond_t sbuff_writer_buffered;
-extern sem_t sbuff_node_count;
-extern sbuffer_t* buffer;
-extern pthread_t writer;
-extern pthread_t reader1;
-extern pthread_t reader2;
+pthread_t writer;
+pthread_t reader1;
+pthread_t reader2;
+sbuffer_t* buffer;
 
 
-int write_to_file(dataprocessor_arg_t* data_arg) {
+int rd_write_to_file(cb_args_t* data_arg) {
     fprintf(((fprintf_attr_t*)data_arg)->data_out,
               "%hd %lf %ld\n",
               ((fprintf_attr_t*)data_arg)->data->id,
@@ -61,14 +57,13 @@ int write_to_file(dataprocessor_arg_t* data_arg) {
 }
 
 // Data processing function that reads in data from a binary file (writer thread).
-int read_from_file(dataprocessor_arg_t* data_arg) {
+int wr_read_from_file(cb_args_t* data_arg) {
     if (fread(&(((fread_attr_t*)data_arg)->data->id), sizeof(sensor_id_t), 1, 
-        ((fread_attr_t*)data_arg)->data_in) != 1) return DATA_PROCESS_ERROR; 
+        ((fread_attr_t*)data_arg)->data_in) != 1) return DATA_PROCESS_ERROR;
     if (fread(&(((fread_attr_t*)data_arg)->data->value), sizeof(sensor_value_t), 1, 
         ((fread_attr_t*)data_arg)->data_in) != 1) return DATA_PROCESS_ERROR;
     if (fread(&(((fread_attr_t*)data_arg)->data->ts), sizeof(sensor_ts_t), 1, 
         ((fread_attr_t*)data_arg)->data_in) != 1) return DATA_PROCESS_ERROR;
-
     //printf("Received data: sensor id = %" PRIu16 " - temperature = %g - timestamp = %ld\n",
     //        ((fread_attr_t*)data_arg)->data->id, 
     //        ((fread_attr_t*)data_arg)->data->value,
@@ -76,67 +71,49 @@ int read_from_file(dataprocessor_arg_t* data_arg) {
     return DATA_PROCESS_SUCCESS;    
 }
 
-int main() {
 
+
+int main() {
+    
   binary_file_in = fopen("sensor_data", "r");
   binary_file_out = fopen("sensor_data_recv", "w+");
-
-  printf("MAIN: opened file pointer %p\n", binary_file_in);
-
   //initialize sbuffer
-  if (sbuffer_init(&buffer) != SBUFFER_SUCCESS) exit(1);
-
-  fread_attr_t fread_arguments = {.data = NULL, 
-                                  .data_in = binary_file_in};
-  fprintf_attr_t fprintf_arguments1 = { .data = NULL,
-                                       .data_out = binary_file_out};
-  fprintf_attr_t fprintf_arguments2 = { .data = NULL,
-                                       .data_out = binary_file_out};
- 
-  sbuff_thread_arg_t writer1_arg = { .sbuffer = buffer, 
-                                     .data_processor = read_from_file, 
-                                     .data_processor_arguments = (dataprocessor_arg_t*)&fread_arguments};
-
-  sbuff_thread_arg_t reader1_arg = { .sbuffer = buffer, 
-                                     .data_processor = write_to_file, 
-                                     .data_processor_arguments = (dataprocessor_arg_t*)&fprintf_arguments1};
-
-  sbuff_thread_arg_t reader2_arg = { .sbuffer = buffer, 
-                                     .data_processor = write_to_file, 
-                                     .data_processor_arguments = (dataprocessor_arg_t*)&fprintf_arguments2};
- 
-
-
-  //initialize barriers
-  if(pthread_barrier_init(&sbuff_reader_sync, NULL, SBUFF_READER_THREADS) == -1) DEBUG_PRINTF("Pthread barrier init error\n"); // init barrier for 2 wait calls
-  if(pthread_barrier_init(&sbuff_start_readers, NULL, SBUFF_READER_THREADS + SBUFF_WRITER_THREADS) == -1) DEBUG_PRINTF("Pthread barrier init error\n"); // init barrier for 2 wait calls
-  //used in readers:
-  if(sem_init(&sbuff_node_count, 0, 0) == -1) DEBUG_PRINTF("Pthread semaphore init error\n"); // create semaphore
-
-  //create writer thread
-  PTH_create(&writer, NULL, writer_thread, &writer1_arg); // start writing to sbuffer
-  PTH_create(&reader1, NULL, reader_thread, &reader1_arg); // Start reading (tries sem and yields immediately (sem ==0))
-  PTH_create(&reader2, NULL, reader_thread, &reader2_arg); // Start reading (tries sem and yields immediately (sem ==0))
+  if (sbuffer_init(&buffer, SBUFF_READER_THREADS, SBUFF_WRITER_THREADS) != SBUFFER_SUCCESS) exit(1);
   
+
+  fread_attr_t bin_in_args = { .data = NULL, 
+                              .data_in = binary_file_in};
+  
+  fprintf_attr_t bin_out_args = { .data = NULL,
+                                 .data_out = binary_file_out};
+   
+  sbuffer_add_callback(buffer, wr_read_from_file, (cb_args_t*)&bin_in_args, SBUFFER_WRITER);
+  sbuffer_add_callback(buffer, rd_write_to_file, (cb_args_t*)&bin_out_args, SBUFFER_READER);
+
+  //sbuffer_remove_callback(buffer, wr_read_from_file, (cb_args_t*)&bin_in_args);
+  //sbuffer_remove_callback(buffer, rd_write_to_file, (cb_args_t*)&bin_out_args);
+
+  printf("read_from_file_func AT %p\n", wr_read_from_file);
+  printf("bin out args at %p\n", &bin_in_args);
+
+  printf("write_to_file_func AT %p\n", rd_write_to_file);
+  printf("bin out args at %p\n", &bin_out_args);
+
+
+  printf("buffer pointer in main: %p\n", buffer);
+  PTH_create(&writer, NULL, writer_thread, buffer); // start writing to sbuffer
+  
+  PTH_create(&reader1, NULL, reader_thread, buffer); // Start reading (tries sem and yields immediately (sem ==0))
+  PTH_create(&reader2, NULL, reader_thread, buffer); // Start reading (tries sem and yields immediately (sem ==0)) 
+  printf("waiting for writer\n");
   pthread_join(writer, NULL);
   pthread_join(reader1, NULL);
   pthread_join(reader2, NULL);
-                                         //  SBUFF_READER_THREADS is predefined and sem_getvalue is MT-safe.
-
-                                            
-  
-  //PTH_create(&reader2, NULL, read, &reader_attr);
-  
-  //pthread_barrier_wait(&sbuff_main_rw_sync);
- 
-
-  pthread_barrier_destroy(&sbuff_reader_sync);
-  pthread_rwlock_destroy(&sbuff_writer_inserting);
 
   fclose(binary_file_in);
   fclose(binary_file_out);
   sbuffer_free(&buffer);
-  printf("SUCCESFULLY EXITED MAIN\n");
   
   return 0;
 }
+

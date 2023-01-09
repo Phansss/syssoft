@@ -5,6 +5,10 @@
         "pthread.h": "c",
         "sbuffer.h": "c",
         "semaphore.h": "c",
-        "new": "c"
+        "new": "c",
+        "stdlib.h": "c",
+        "errmacros.h": "c",
+        "config.h": "c",
+        "types.h": "c"
     }
 }

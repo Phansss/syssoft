@@ -74,7 +74,7 @@
 #define DEBUG
 
 #ifdef DEBUG
-#define DEBUG_PRINTF(...) 									                                        \
+/* #define DEBUG_PRINTF(...) 									                                        \
         do {											                                            \
             fprintf(stderr,"\nIn %s - function %s at line %d: ", __FILE__, __func__, __LINE__);	    \
             fprintf(stderr,__VA_ARGS__);								                            \
@@ -82,7 +82,7 @@
 			exit(1000); 																																						\
 		} while(0)
                 
-			//                                                                        
+			//      */                                                                   
                
 #else
 #define DEBUG_PRINTF(...) (void)0

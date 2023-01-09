@@ -5,7 +5,7 @@ LDCONFIG = ldconfig
 FLAGS = -std=c11 -Werror -lm $(shell pkg-config --cflags --libs check)
 
 main:
-	gcc -Wall main.c sbuffer.c -o ./build/main_sbuff -ldplist $(FLAGS)
+	gcc -Wall main.c sbuffer.c lib/dplist.c -o ./build/main_sbuff $(FLAGS)
 	./build/main_sbuff
 
 main_debug:

@@ -9,6 +9,9 @@
 #include <stdio.h>
 #include <assert.h>
 #include "dplist.h"
+#include "../config.h"
+#include <sys/syscall.h>
+#include <unistd.h>
 
 /*
  * definition of error codes
@@ -17,27 +20,61 @@
 #define DPLIST_MEMORY_ERROR 1 // error due to mem alloc failure
 #define DPLIST_INVALID_ERROR 2 //error due to a list operation applied on a NULL list
 
-#ifdef DEBUG
-#define DEBUG_PRINTF(...) 									                                        \
-        do {											                                            \
-            fprintf(stderr,"\nIn %s - function %s at line %d: ", __FILE__, __func__, __LINE__);	    \
-            fprintf(stderr,__VA_ARGS__);								                            \
-            fflush(stderr);                                                                         \
-                } while(0)
-                
+#ifdef DEBUG_DPLIST                                                   
+#define ERROR_IF(...) _ERROR_NO_ARG(__VA_ARGS__, " ");                                  
+#define _ERROR_NO_ARG(cond,fmt,...) 									                                                             \
+        do {if (cond) {                                                                                                              \
+                pid_t* tid = (pid_t*) malloc(sizeof(pid_t));                                                                         \
+                if (tid == NULL) {                                                                                                   \
+                    fprintf(stderr, "ERROR_DPLIST [%s:%d] in %s: "fmt"%s\n",  __FILE__,__LINE__,__func__, __VA_ARGS__);              \
+                    fprintf(stderr,"    "#cond"\n");                                                                                 \
+                    fprintf(stderr,"   NOTE: Could not determine thread id due to malloc error");                                    \
+                    exit(1);                                                                                                         \
+                }                                                                                                                    \
+                *tid = syscall(__NR_gettid);                                                                                         \
+                fprintf(stderr, "ERROR_DPLIST [%s:%d] in %s_(%d): "fmt"%s\n",  __FILE__,__LINE__,__func__ ,*tid, __VA_ARGS__);       \
+                fprintf(stderr,"    "#cond"\n");                                                                                     \
+                fflush(stderr);                                                                                                      \
+                free(tid);                                                                                                           \
+                exit(1);                                                                                                             \
+            }                                                                                                                        \
+            }while(0)
+#define DEBUG_PRINTF(...) _DEBUG_NO_ARG(__VA_ARGS__, " ");                                  
+#define _DEBUG_NO_ARG(fmt,...) 									                                                                     \
+        do {pid_t* tid = (pid_t*) malloc(sizeof(pid_t));                                                                             \
+                if (tid == NULL) {                                                                                                   \
+                    fprintf(stderr, "DEBUG_DPLIST [%s:%d] in %s_(%d): "fmt"%s\n",  __FILE__,__LINE__,__func__ ,*tid, __VA_ARGS__);   \
+                    fprintf(stderr,"   NOTE: Could not determine thread id due to malloc error");                                    \
+                    fflush(stderr);                                                                                                  \
+                    break;                                                                                                           \
+                }                                                                                                                    \
+                *tid = syscall(__NR_gettid);                                                                                         \
+                fprintf(stderr, "DEBUG_DPLIST [%s:%d] in %s_(%d): "fmt"%s\n",  __FILE__,__LINE__,__func__ ,*tid, __VA_ARGS__);       \
+                fflush(stderr);                                                                                                      \
+                free(tid);                                                                                                           \
+            }while(0)            
 #else
-#define DEBUG_PRINTF(...) (void)0
+#define ERROR_IF(...) _ERROR_NO_ARG(__VA_ARGS__, " ");                                  
+#define _ERROR_NO_ARG(cond,fmt,...) 									                                                             \
+        do {if (cond) {                                                                                                              \
+                pid_t* tid = (pid_t*) malloc(sizeof(pid_t));                                                                         \
+                if (tid == NULL) {                                                                                                   \
+                    fprintf(stderr, "ERROR_DPLIST [%s:%d] in %s: "fmt"%s\n",  __FILE__,__LINE__,__func__, __VA_ARGS__);              \
+                    fprintf(stderr,"    "#cond"\n");                                                                                 \
+                    fprintf(stderr,"   NOTE: Could not determine thread id due to malloc error");                                    \
+                    exit(1);                                                                                                         \
+                }                                                                                                                    \
+                *tid = syscall(__NR_gettid);                                                                                         \
+                fprintf(stderr, "ERROR_DPLIST [%s:%d] in %s_(%d): "fmt"%s\n",  __FILE__,__LINE__,__func__ ,*tid, __VA_ARGS__);       \
+                fprintf(stderr,"    "#cond"\n");                                                                                     \
+                fflush(stderr);                                                                                                      \
+                free(tid);                                                                                                           \
+                exit(1);                                                                                                             \
+            }                                                                                                                        \
+            }while(0)
+#define DEBUG_PRINTF(...) _DEBUG_NO_ARG(__VA_ARGS__, " ");
+#define _DEBUG_NO_ARG(fmt,...) (void)0
 #endif
-
-
-
-
-#define DPLIST_ERR_HANDLER(condition, err_code)                         \
-    do {                                                                \
-            if ((condition)) DEBUG_PRINTF(#condition " failed\n");      \
-            assert(!(condition));                                       \
-        } while(0)
-
 
 /*
  * The real definition of struct list / struct node
@@ -61,6 +98,7 @@ struct dplist {
 };
 
 static bool dpl_is_sorted(dplist_t *list);
+
 dplist_t *dpl_create(// callback functions
         void *(*element_copy)(void *src_element),
         void (*element_free)(void **element),
@@ -69,12 +107,13 @@ dplist_t *dpl_create(// callback functions
 ) {
     dplist_t *list;
     list = malloc(sizeof(struct dplist));
-    DPLIST_ERR_HANDLER(list == NULL, DPLIST_MEMORY_ERROR);
+    ERROR_IF(list == NULL, ERR_MALLOC("dplist"));
     list->head = NULL;
     list->element_copy = element_copy;
     list->element_free = element_free;
     list->element_compare = element_compare;
     list->element_print = element_print;
+
     return list;
 }
 
@@ -130,7 +169,7 @@ dplist_t *dpl_insert_at_index(dplist_t *list, void *element, int index, bool ins
         return NULL;
         }
     list_node = malloc(sizeof(dplist_node_t));
-    DPLIST_ERR_HANDLER(list_node == NULL, DPLIST_MEMORY_ERROR);
+    ERROR_IF(list_node == NULL, ERR_MALLOC("list node"));
     if (insert_copy) {
         list_node->element = list->element_copy(element);
     }
@@ -527,13 +566,14 @@ dplist_t *dpl_remove_element(dplist_t *list, void *element, bool free_element) {
     if(list->head == NULL) return list;
     dplist_node_t *dummy = NULL;
     int count;
+
     for (dummy = list->head, count=0; dummy->next != NULL; dummy = dummy->next, count++) {
-        if(element == dummy->element) {
+        if(element == dummy->element || (list->element_compare(dummy->element, element) == 0) ) {
             dpl_remove_at_index(list, count, free_element);
             return list;
         }
     }
-    if(element == dummy->element) { //Last node check.
+    if(element == dummy->element || (list->element_compare(dummy->element, element) == 0) ) { //Last node check.
         count++; //Count not incremented in final for-loop but used in function call immediately below.
         dpl_remove_at_index(list, count, free_element); 
         return list;
