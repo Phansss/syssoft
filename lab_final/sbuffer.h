@@ -2,8 +2,7 @@
  * \author Pieter Hanssens
  */
 #include "config.h"
-#include "lib/dplist.h"
-#include <pthread.h>
+
 
 #ifndef _SBUFFER_H_
 #define _SBUFFER_H_
@@ -48,11 +47,15 @@
 #define NO_OF_READERS 2
 #define DATA_BUFFER_SIZE 5
 
+
+
+
 typedef struct sbuffer sbuffer_t;
 
 typedef struct data_buffer {
-    sensor_data_t** head;
+    sensor_data_t* head;
     size_t size;
+    int count_received;
 } data_buffer_t;
 
 typedef struct cb_args {
@@ -99,7 +102,7 @@ int sbuffer_remove(sbuffer_t *buffer);
  * \param reader_callbacks a pointer to a list containing callback functions that need to process this sbuff node.
  * \return SBUFFER_SUCCESS on success and SBUFFER_FAILURE if an error occured
 */
-int sbuffer_insert(sbuffer_t *buffer, sensor_data_t *data);
+int sbuffer_insert(sbuffer_t *buffer, const sensor_data_t *data);
 
 
 int sbuffer_size(sbuffer_t* buffer); 

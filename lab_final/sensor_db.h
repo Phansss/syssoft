@@ -5,8 +5,6 @@
 #ifndef _SENSOR_DB_H_
 #define _SENSOR_DB_H_
 
-#include <stdio.h>
-#include <stdlib.h>
 #include "config.h"
 #include <sqlite3.h>
 

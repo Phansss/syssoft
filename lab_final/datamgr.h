@@ -5,6 +5,7 @@
 #ifndef DATAMGR_H_
 #define DATAMGR_H_
 
+#include "debugger.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include "config.h"
@@ -25,7 +26,7 @@
 
 typedef struct my_sensor my_sensor_t;
 
-dplist_t* sensor_list;
+extern dplist_t* sensor_room_list;
 
 /*****************************************************LAB METHODS**************************************************************/
 
@@ -127,29 +128,9 @@ void sensor_push_value(my_sensor_t* sensor, sensor_value_t value);
 void sensor_update_ravg(my_sensor_t* sensor);
 
 
-                                    
-/*********************************************************CALLBACKS*******************************************************************/
-
-/** Copies the given sensorlist element. Also deepcopies any sensor data at the time of the function call.
- * \param element pointer to the element to be copied
- * \return copy pointer to the copied sensorlist element.
-*/ 
-void* element_copy(void * element);                                             
-
-
-void element_free(void ** element);   
-
-
-int element_compare(void * x, void * y);         
-
-
-/**
- * Callback function to print the contents of an element of type my_sensor_t inside a dplist.
- * \param element pointer to the element
- * \return Nothing. The content is printed on stdout
-*/                               //|
-void element_print(void * element);                                             
-
-
+void * my_sensor_copy(void * element);
+void my_sensor_free(void ** element) ;
+int my_sensor_compare(void * x, void * y);
+void my_sensor_print(void* element) ;
 
 #endif  //DATAMGR_H_

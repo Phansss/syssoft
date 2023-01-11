@@ -2,8 +2,9 @@
 
 
 #include "config.h"
-#include "sbuffer.h"
 
+#include "sbuffer.h"
+#include "main_debug.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -16,7 +17,7 @@
 #include "lib/dplist.h"
 
 
-#include "main_debug.h"
+
 
 
 #define WRITER_DATA_IN_EMPTY -1

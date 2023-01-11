@@ -1,8 +1,12 @@
 #define _GNU_SOURCE
 
+#include "config.h"
+#include "errhandler.h"
+#include "debugger.h"
 #include "datamgr.h"
 #include "lib/dplist.h"
 #include <assert.h>
+#include <inttypes.h>
 
 #define DATAMGR_READ_ERROR 1
 /** Structure to store sensor logistics.
@@ -17,38 +21,49 @@ typedef struct my_sensor {
     int rvalues_valid;                        // count non-zero values in rvalues at startup of the application
 } my_sensor_t;
 
+
 //Wrapper function for lab 5. Not used in final application.
 void datamgr_parse_sensor_files(FILE *fp_sensor_map, FILE *fp_sensor_data) {
     // Create and parse sensors into dplist
-    sensor_list = dpl_create(element_copy, element_free, element_compare, element_print);
-    parse_sensor_map(fp_sensor_map, &sensor_list);
+    sensor_room_list = dpl_create(my_sensor_copy, my_sensor_free, my_sensor_compare, my_sensor_print);
+    parse_sensor_map(fp_sensor_map, &sensor_room_list);
 
     sensor_data_t data_rx = {.id = 0, .ts = 0, .value = 0};
-    while  (read(&(data_rx.id), sizeof(sensor_id_t), 1, fp_sensor_data)!= 0) {
+    while  (fread(&(data_rx.id), sizeof(sensor_id_t), 1, fp_sensor_data) != 0) {
         fread(&(data_rx.value), sizeof(sensor_value_t), 1, fp_sensor_data);
         fread(&(data_rx.ts), sizeof(sensor_ts_t), 1, fp_sensor_data); 
         process_sensor_data(&data_rx);
     }
 }
 
+/**
+ * This method should be called to clean up the datamgr, and to free all used memory. 
+ * After this, any call to datamgr_get_room_id, datamgr_get_avg, datamgr_get_last_modified or datamgr_get_total_sensors will not return a valid result
+ */
+void datamgr_free() {
+    dpl_free(&sensor_room_list, 1);
+}
+
+
 void parse_sensor_map(FILE *fp_sensor_map, dplist_t** dplist){
     my_sensor_t* new_sensor = NULL;
     sensor_create(&new_sensor, 0, 0);
-    while(fscanf(fp_sensor_map, "%hd %hd", &((new_sensor)->rid), &((new_sensor)->sid)) != EOF) {
+    while(fscanf(fp_sensor_map, "%h"PRIu16 " %h"PRIu16, &((new_sensor)->rid), &((new_sensor)->sid)) != EOF) {
         dpl_insert_sorted(*dplist, new_sensor, true);
     }
     free(new_sensor);
 }
 
 void process_sensor_data(sensor_data_t* data) {
-    my_sensor_t* curr_sensor = NULL;                
-    int i = 0;
+    my_sensor_t* curr_sensor;                
  
     //Search for the sensor in dplist
-    curr_sensor = sensor_search(sensor_list, data->id);
+    curr_sensor = sensor_search(sensor_room_list, data->id);
     if (curr_sensor == NULL) { 
-        fprintf(stderr, "Received data for missing sensor (%d)!", data->id);
+        ERROR_IF(curr_sensor == NULL, "Received data for missing sensor (%d)!", data->id)
+        return;
     }
+    
     //Update the sensor in the dplist 
     sensor_update(curr_sensor, data->value, data->ts);
 
@@ -65,26 +80,26 @@ void process_sensor_data(sensor_data_t* data) {
 }
 
 uint16_t datamgr_get_room_id(sensor_id_t sensor_id) {
-    my_sensor_t* sensor = sensor_search(sensor_list, sensor_id);
+    my_sensor_t* sensor = sensor_search(sensor_room_list, sensor_id);
     //ERROR_HANDLER(sensor == NULL, ERR_INVALID_ID);
     return sensor->rid;
 }
 
 sensor_value_t datamgr_get_avg(sensor_id_t sensor_id) {
-    my_sensor_t* sensor = sensor_search(sensor_list, sensor_id);
+    my_sensor_t* sensor = sensor_search(sensor_room_list, sensor_id);
     //ERROR_HANDLER(sensor == NULL, ERR_INVALID_ID);
     return sensor->ravg;
 }
 
 time_t datamgr_get_last_modified(sensor_id_t sensor_id) {
-    my_sensor_t* sensor = sensor_search(sensor_list, sensor_id);
+    my_sensor_t* sensor = sensor_search(sensor_room_list, sensor_id);
     //ERROR_HANDLER(sensor == NULL, ERR_INVALID_ID);
     return sensor->lm;
 }
 
 // TO DO: Check for duplicate IDs in different rooms(?)
 int datamgr_get_total_sensors() {
-    return dpl_size(sensor_list);
+    return dpl_size(sensor_room_list);
 }
 
 
@@ -161,7 +176,7 @@ void sensor_update_ravg(my_sensor_t* sensor) {
 
 
 /********************************************************* _DPLIST CALLBACKS_*******************************************************************/
-void * element_copy(void * element) {
+void * my_sensor_copy(void * element) {
     my_sensor_t* copy = malloc(sizeof (my_sensor_t));
     assert(copy != NULL);
     copy->rid = ((my_sensor_t*)element)->rid;
@@ -175,7 +190,7 @@ void * element_copy(void * element) {
     return (void *) copy;
 }
 
-void element_free(void ** element) {
+void my_sensor_free(void ** element) {
     if (*element == NULL) return;
     else {
         free(*element);
@@ -183,11 +198,11 @@ void element_free(void ** element) {
     }
 }
 
-int element_compare(void * x, void * y) {
+int my_sensor_compare(void * x, void * y) {
     return ((((my_sensor_t*)x)->sid < ((my_sensor_t*)y)->sid) ? -1 : (((my_sensor_t*)x)->sid == ((my_sensor_t*)y)->sid) ? 0 : 1);
 }
 
-void element_print(void* element) {
+void my_sensor_print(void* element) {
     char buff[25];
     struct tm* timeinfo;
     timeinfo = localtime(&(((my_sensor_t*)element)->lm));

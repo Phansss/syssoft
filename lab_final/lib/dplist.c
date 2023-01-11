@@ -2,16 +2,16 @@
  * \author Pieter Hanssens
  */
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
+#define _GNU_SOURCE
 #endif
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <assert.h>
+#include "../debugger.h"
+#include "../errhandler.h"
 #include "dplist.h"
-#include "../config.h"
-#include <sys/syscall.h>
-#include <unistd.h>
+
+#include <assert.h>
 
 /*
  * definition of error codes
@@ -19,62 +19,6 @@
 #define DPLIST_NO_ERROR 0
 #define DPLIST_MEMORY_ERROR 1 // error due to mem alloc failure
 #define DPLIST_INVALID_ERROR 2 //error due to a list operation applied on a NULL list
-
-#ifdef DEBUG_DPLIST                                                   
-#define ERROR_IF(...) _ERROR_NO_ARG(__VA_ARGS__, " ");                                  
-#define _ERROR_NO_ARG(cond,fmt,...) 									                                                             \
-        do {if (cond) {                                                                                                              \
-                pid_t* tid = (pid_t*) malloc(sizeof(pid_t));                                                                         \
-                if (tid == NULL) {                                                                                                   \
-                    fprintf(stderr, "ERROR_DPLIST [%s:%d] in %s: "fmt"%s\n",  __FILE__,__LINE__,__func__, __VA_ARGS__);              \
-                    fprintf(stderr,"    "#cond"\n");                                                                                 \
-                    fprintf(stderr,"   NOTE: Could not determine thread id due to malloc error");                                    \
-                    exit(1);                                                                                                         \
-                }                                                                                                                    \
-                *tid = syscall(__NR_gettid);                                                                                         \
-                fprintf(stderr, "ERROR_DPLIST [%s:%d] in %s_(%d): "fmt"%s\n",  __FILE__,__LINE__,__func__ ,*tid, __VA_ARGS__);       \
-                fprintf(stderr,"    "#cond"\n");                                                                                     \
-                fflush(stderr);                                                                                                      \
-                free(tid);                                                                                                           \
-                exit(1);                                                                                                             \
-            }                                                                                                                        \
-            }while(0)
-#define DEBUG_PRINTF(...) _DEBUG_NO_ARG(__VA_ARGS__, " ");                                  
-#define _DEBUG_NO_ARG(fmt,...) 									                                                                     \
-        do {pid_t* tid = (pid_t*) malloc(sizeof(pid_t));                                                                             \
-                if (tid == NULL) {                                                                                                   \
-                    fprintf(stderr, "DEBUG_DPLIST [%s:%d] in %s_(%d): "fmt"%s\n",  __FILE__,__LINE__,__func__ ,*tid, __VA_ARGS__);   \
-                    fprintf(stderr,"   NOTE: Could not determine thread id due to malloc error");                                    \
-                    fflush(stderr);                                                                                                  \
-                    break;                                                                                                           \
-                }                                                                                                                    \
-                *tid = syscall(__NR_gettid);                                                                                         \
-                fprintf(stderr, "DEBUG_DPLIST [%s:%d] in %s_(%d): "fmt"%s\n",  __FILE__,__LINE__,__func__ ,*tid, __VA_ARGS__);       \
-                fflush(stderr);                                                                                                      \
-                free(tid);                                                                                                           \
-            }while(0)            
-#else
-#define ERROR_IF(...) _ERROR_NO_ARG(__VA_ARGS__, " ");                                  
-#define _ERROR_NO_ARG(cond,fmt,...) 									                                                             \
-        do {if (cond) {                                                                                                              \
-                pid_t* tid = (pid_t*) malloc(sizeof(pid_t));                                                                         \
-                if (tid == NULL) {                                                                                                   \
-                    fprintf(stderr, "ERROR_DPLIST [%s:%d] in %s: "fmt"%s\n",  __FILE__,__LINE__,__func__, __VA_ARGS__);              \
-                    fprintf(stderr,"    "#cond"\n");                                                                                 \
-                    fprintf(stderr,"   NOTE: Could not determine thread id due to malloc error");                                    \
-                    exit(1);                                                                                                         \
-                }                                                                                                                    \
-                *tid = syscall(__NR_gettid);                                                                                         \
-                fprintf(stderr, "ERROR_DPLIST [%s:%d] in %s_(%d): "fmt"%s\n",  __FILE__,__LINE__,__func__ ,*tid, __VA_ARGS__);       \
-                fprintf(stderr,"    "#cond"\n");                                                                                     \
-                fflush(stderr);                                                                                                      \
-                free(tid);                                                                                                           \
-                exit(1);                                                                                                             \
-            }                                                                                                                        \
-            }while(0)
-#define DEBUG_PRINTF(...) _DEBUG_NO_ARG(__VA_ARGS__, " ");
-#define _DEBUG_NO_ARG(fmt,...) (void)0
-#endif
 
 /*
  * The real definition of struct list / struct node

@@ -4,6 +4,14 @@
         "errmacros.h": "c",
         "inttypes.h": "c",
         "dplist.h": "c",
-        "connmgr.h": "c"
+        "connmgr.h": "c",
+        "config.h": "c",
+        "stat.h": "c",
+        "assert.h": "c",
+        "datamgr.h": "c",
+        "callbacks.h": "c",
+        "sensor_db.h": "c",
+        "main_debug.h": "c",
+        "type_traits": "c"
     }
 }

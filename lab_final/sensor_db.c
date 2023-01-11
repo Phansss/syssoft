@@ -1,9 +1,13 @@
 #ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
+#define _GNU_SOURCE
 #endif
 
+#include <stdlib.h>
+#include <stdio.h>
+#include "debugger.h"
+#include "errhandler.h"
+
 #include "sensor_db.h"
-#include "config.h"
 
 
 
@@ -20,8 +24,9 @@ DBCONN *init_connection(char clear_up_flag) {
     char* query_reset_table = NULL;
 
     //open the database connection
-    if (sqlite3_open(TO_STRING(DB_NAME), &db) != SQLITE_OK) {
-        fprintf(stderr, "Failed to open database: %s\n", sqlite3_errmsg(db));
+    while (sqlite3_open(TO_STRING(DB_NAME), &db) != SQLITE_OK) {
+        fprintf(stderr, "Failed to open database: %s. Retrying in 2seconds", sqlite3_errmsg(db));
+        sleep(2);
         sqlite3_close(db);
         return NULL;
     }
@@ -42,7 +47,6 @@ DBCONN *init_connection(char clear_up_flag) {
         query_reset_table = NULL;
         free(err_msg);
         err_msg = NULL;
-
         }  
     return db;
     
@@ -73,7 +77,7 @@ int insert_sensor(DBCONN *conn, sensor_id_t id, sensor_value_t value, sensor_ts_
                 fprintf(stderr, "Failed to allocate memory for query_insert_srow: %s\n", sqlite3_errmsg(conn));
                 return 1;
         }
-    printf("%s\n", query_insert_srow);
+    PRINTF_SENSOR_DB("%s", query_insert_srow);
     if (sqlite3_exec(conn, query_insert_srow, NULL, NULL, &err_msg) != SQLITE_OK) {
         fprintf(stderr, "Failed to execute query_insert_srow: %s\n ", err_msg);
         return 1;
@@ -93,8 +97,8 @@ int insert_sensor(DBCONN *conn, sensor_id_t id, sensor_value_t value, sensor_ts_
  */
 int insert_sensor_from_file(DBCONN *conn, FILE *sensor_data) {
     sensor_data_t buffer;
-    char* query_insert_sdata;
-    char* err_msg;
+    char* query_insert_sdata = NULL;
+    char* err_msg = NULL;
 
     int i = 0;
     while (fread(&((&buffer)->id), sizeof(sensor_id_t), 1, sensor_data)!= 0) {

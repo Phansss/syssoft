@@ -5,12 +5,14 @@
 
 #define _GNU_SOURCE
 
-#include "sbuffer.h"
+
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <inttypes.h>
 #include <pthread.h>
+#include "sbuffer.h"
+
 #include <semaphore.h>
 #include "errmacros.h"
 #include <assert.h>
@@ -20,6 +22,8 @@
 #include <sys/syscall.h>
 #include "lib/dplist.h"
 #include "main_debug.h"
+#include "debugger.h"
+#include "errhandler.h"
 
 int test = 0;
 
@@ -27,66 +31,6 @@ int test = 0;
 #define _callback_arg_ (((sbuff_thread_arg_t*)arg)->data_processor_arguments)
 #define _callback_func_ (((sbuff_thread_arg_t*)arg)->data_processor)
 #define _node_callbacks_ (((sbuff_thread_arg_t*)arg)->sbuff_thread_callbacks)
-
-#ifdef DEBUG_SBUFF                                                  
-#define ERROR_IF(...) _ERROR_NO_ARG(__VA_ARGS__, " ");                                  
-#define _ERROR_NO_ARG(cond,fmt,...) 									                                                             \
-        do {if (cond) {                                                                                                              \
-                pid_t* tid = (pid_t*) malloc(sizeof(pid_t));                                                                         \
-                if (tid == NULL) {                                                                                                   \
-                    fprintf(stderr, "ERROR_SBUFF [%s:%d] in %s: "fmt"%s\n",  __FILE__,__LINE__,__func__, __VA_ARGS__);               \
-                    fprintf(stderr,"    "#cond"\n");                                                                                 \
-                    fprintf(stderr,"   NOTE: Could not determine thread id due to malloc error");                                    \
-                    fflush(stderr);                                                                                                  \
-                    exit(1);                                                                                                         \
-                }                                                                                                                    \
-                *tid = syscall(__NR_gettid);                                                                                         \
-                fprintf(stderr, "ERROR_SBUFF [%s:%d] in %s_(%d): "fmt"%s\n",  __FILE__,__LINE__,__func__ ,*tid, __VA_ARGS__);        \
-                fprintf(stderr,"    "#cond"\n");                                                                                     \
-                fflush(stderr);                                                                                                      \
-                free(tid);                                                                                                           \
-                exit(1);                                                                                                             \
-            }                                                                                                                        \
-            }while(0)
-#define DEBUG_PRINTF(...) _DEBUG_NO_ARG(__VA_ARGS__, " ");                                  
-#define _DEBUG_NO_ARG(fmt,...) 									                                                                     \
-        do {pid_t* tid = (pid_t*) malloc(sizeof(pid_t));                                                                             \
-                if (tid == NULL) {                                                                                                   \
-                    fprintf(stderr, "DEBUG_SBUFF [%s:%d] in %s: "fmt"%s\n",  __FILE__,__LINE__,__func__, __VA_ARGS__);    \
-                    fprintf(stderr,"   NOTE: Could not determine thread id due to malloc error");                                    \
-                    fflush(stderr);                                                                                                  \
-                    break;                                                                                                           \
-                }                                                                                                                    \
-                *tid = syscall(__NR_gettid);                                                                                         \
-                fprintf(stderr, "DEBUG_SBUFF [%s:%d] in %s_(%d): "fmt"%s\n",  __FILE__,__LINE__,__func__ ,*tid, __VA_ARGS__);        \
-                fflush(stderr);                                                                                                      \
-                free(tid);                                                                                                           \
-            }while(0)            
-#else
-#define ERROR_IF(...) _ERROR_NO_ARG(__VA_ARGS__, " ");                                  
-#define ERROR_IF(...) _ERROR_NO_ARG(__VA_ARGS__, " ");                                  
-#define _ERROR_NO_ARG(cond,fmt,...) 									                                                             \
-        do {if (cond) {                                                                                                              \
-                pid_t* tid = (pid_t*) malloc(sizeof(pid_t));                                                                         \
-                if (tid == NULL) {                                                                                                   \
-                    fprintf(stderr, "ERROR_SBUFF [%s:%d] in %s: "fmt"%s\n",  __FILE__,__LINE__,__func__, __VA_ARGS__);               \
-                    fprintf(stderr,"    "#cond"\n");                                                                                 \
-                    fprintf(stderr,"   NOTE: Could not determine thread id due to malloc error");                                    \
-                    fflush(stderr);                                                                                                  \
-                    exit(1);                                                                                                         \
-                }                                                                                                                    \
-                *tid = syscall(__NR_gettid);                                                                                         \
-                fprintf(stderr, "ERROR_SBUFF [%s:%d] in %s_(%d): "fmt"%s\n",  __FILE__,__LINE__,__func__ ,*tid, __VA_ARGS__);        \
-                fprintf(stderr,"    "#cond"\n");                                                                                     \
-                fflush(stderr);                                                                                                      \
-                free(tid);                                                                                                           \
-            }                                                                                                                        \
-            }while(0)
-#define DEBUG_PRINTF(...) _DEBUG_NO_ARG(__VA_ARGS__, " ");
-#define _DEBUG_NO_ARG(fmt,...) (void)0
-#endif
-
-
 int count;
 
 void *reader_cleanup(sbuffer_t* buffer);
@@ -189,7 +133,7 @@ int sbuffer_init(sbuffer_t **buffer, int no_readers, int no_writers) {
         ERROR_IF(((*buffer)->nodelock_array)[i] == NULL, ERR_MALLOC("mutex"));
         ERROR_IF((pthread_mutex_init((((*buffer)->nodelock_array)[i]) , NULL) == -1), ERR_MUTEX_INIT);
     }
-    DEBUG_PRINTF("Initialized 'barrier_rw_startreaders' at address: %p", &(((sbuffer_t*)buffer)->barrier_rw_startreaders));
+    PRINTF_SBUFFER("Initialized 'barrier_rw_startreaders' at address: %p", &(((sbuffer_t*)buffer)->barrier_rw_startreaders));
     
     return SBUFFER_SUCCESS;
 }
@@ -294,11 +238,11 @@ int rb_lock_execute(sbuffer_t* buffer) {
     sbuffer_node_t *dummy_sbuff_node;
     dummy_sbuff_node = buffer->head; // start looping through the running buffer at the start of the sbuffer
     for (int idx_la= 0; idx_la<buffer->no_readers; idx_la++) { //search lock array for free buff node
-        //DEBUG_PRINTF("Reader trying lock %d of nodelock_array",i);
+        //PRINTF_SBUFFER("Reader trying lock %d of nodelock_array",i);
         node_lock = pthread_mutex_trylock((buffer->nodelock_array)[dummy_sbuff_node->rb_index]);
         switch (node_lock) { //reader thread bound to node in ready sbuffer. Loop through loopback functions.
             case 0:
-                //DEBUG_PRINTF("Reader locked on lock %d of nodelock_array", idx_la);
+                //PRINTF_SBUFFER("Reader locked on lock %d of nodelock_array", idx_la);
                 while(count_r_callback_exec != 0) {                 // keep looping over the callbacks until all functions are executed by this thread
                     for (int j = 0; j < no_r_callbacks; j++) {      //
                         dummy_callback_t = dpl_get_element_at_index(buffer->cbs_r, j);
@@ -311,7 +255,7 @@ int rb_lock_execute(sbuffer_t* buffer) {
                                 //count++;
                                 pthread_mutex_unlock(dummy_callback_t->exec_lock);
                                 GET_CALLBACK_FUNCTION_NAME(dummy_callback_t->function); // THESE TWO GO ALWAYS TOGETHER 
-                                //DEBUG_PRINTF("Reader executed callback function: %s", f_name); 
+                                PRINTF_SBUFFER("Reader executed callback function: %s", f_name); 
                                 FREE_CALLBACK_FUNCTION_NAME;                            // THESE TWO GO ALWAYS TOGETHER
                             }
                         }
@@ -330,16 +274,16 @@ int rb_lock_execute(sbuffer_t* buffer) {
 
 
 void *reader_thread(void *buffer) {
-    DEBUG_PRINTF("Reader thread started")
+    PRINTF_SBUFFER("Reader thread started");
     pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_rw_startreaders);                                                        // Wait until all writers have buffered.
     int result = 0;
-    DEBUG_PRINTF("Reader starts reading ")
+    PRINTF_SBUFFER("Reader starts reading ");
     //int sv = 0;
     sbuffer_node_t* sbuff_dummy;
     sbuffer_node_t* sbuff_dummy_prev;
     while(1) {
         //if (pthread_rwlock_tryrdlock(((sbuffer_t*)buffer)->rwlock_rw_writing) == EBUSY) {
-            //DEBUG_PRINTF("Address of ((sbuffer_t*)buffer)->semaphore_count_nodes_ready :%p", ((sbuffer_t*)buffer)->semaphore_count_nodes_ready)               // writer still busy; lock not acquired.
+            //PRINTF_SBUFFER("Address of ((sbuffer_t*)buffer)->semaphore_count_nodes_ready :%p", ((sbuffer_t*)buffer)->semaphore_count_nodes_ready)               // writer still busy; lock not acquired.
             if (sem_trywait(((sbuffer_t*)buffer)->semaphore_count_nodes_ready) == 0) {    
                 rb_lock_execute((sbuffer_t*)buffer);
                 result = pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_r_readerssync);
@@ -351,11 +295,11 @@ void *reader_thread(void *buffer) {
                         sbuff_dummy = sbuff_dummy->next;
                         free(sbuff_dummy_prev);
                     }
-                    //DEBUG_PRINTF("Address of ((sbuffer_t*)buffer)->head :%p", &(((sbuffer_t*)buffer)->head))   
+                    //PRINTF_SBUFFER("Address of ((sbuffer_t*)buffer)->head :%p", &(((sbuffer_t*)buffer)->head))   
                     ((sbuffer_t*)buffer)->head = sbuff_dummy;
                 }
-            //DEBUG_PRINTF("Read %d data points from sbuffer", count); 
-            //DEBUG_PRINTF("Waiting for removal of previous buffer")
+            //PRINTF_SBUFFER("Read %d data points from sbuffer", count); 
+            //PRINTF_SBUFFER("Waiting for removal of previous buffer")
             pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_r_readerssync);
             } else{
                 if (pthread_rwlock_tryrdlock(((sbuffer_t*)buffer)->rwlock_rw_writing) != EBUSY) {
@@ -369,7 +313,7 @@ void *reader_thread(void *buffer) {
 
 
 void *reader_cleanup(sbuffer_t* buffer) {
-    DEBUG_PRINTF("Enter reader cleanup");
+    PRINTF_SBUFFER("Enter reader cleanup");
     pthread_exit(0);
 }
                 
@@ -408,7 +352,7 @@ int sbuffer_insert(sbuffer_t *buffer, sensor_data_t *data) {
 
 void *writer_thread(void *buffer) {
 
-    DEBUG_PRINTF("Writer thread started")    //sensor_data_t rx_data = {.id = 0, .value = 0, .ts = 0}; used  for multiple, dedicated writers
+    PRINTF_SBUFFER("Writer thread started");    //sensor_data_t rx_data = {.id = 0, .value = 0, .ts = 0}; used  for multiple, dedicated writers
     int sbuff_count = 0;
     int wr_status = 0;
     sbuff_callback_t* cb = NULL;
@@ -424,16 +368,16 @@ void *writer_thread(void *buffer) {
         wr_status = (cb->function)(cb->arguments);
     }
     //ERROR_IF(wr_status == DATA_PROCESS_ERROR, "Error receving data!");
-    DEBUG_PRINTF("Writer buffered %d sbuffer nodes.", sbuffer_size(((sbuffer_t*)buffer)))
+    PRINTF_SBUFFER("Writer buffered %d sbuffer nodes.", sbuffer_size(((sbuffer_t*)buffer)));
     
     // TO DO:   implement mechanism so that multiple writers can lock the rwlock!
-    DEBUG_PRINTF("Writer lock rwlock 'rwlock_rw_writing'")
+    PRINTF_SBUFFER("Writer lock rwlock 'rwlock_rw_writing'");
     pthread_rwlock_wrlock(((sbuffer_t*)buffer)->rwlock_rw_writing); //SBUFFERED LOCK ON
 
-    DEBUG_PRINTF("Writer blocks on 'barrier_rw_startreaders' (address: %p)", &(((sbuffer_t*)buffer)->barrier_rw_startreaders));
+    PRINTF_SBUFFER("Writer blocks on 'barrier_rw_startreaders' (address: %p)", &(((sbuffer_t*)buffer)->barrier_rw_startreaders));
     pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_rw_startreaders); 
 
-    DEBUG_PRINTF("Writer continue writing")
+    PRINTF_SBUFFER("Writer continue writing");
     wr_status = (cb->function)(cb->arguments);
     while (wr_status != DATA_PROCESS_ERROR) {
         sbuffer_insert(((sbuffer_t*)buffer), ((cb_args_t*)(cb->arguments))->data);
@@ -442,13 +386,13 @@ void *writer_thread(void *buffer) {
         wr_status = (cb->function)(cb->arguments);      
     }
     //ERROR_IF(wr_status == DATA_PROCESS_ERROR, "Error receving data!");
-    DEBUG_PRINTF("Writer finished. Wrote %d sbuffer nodes", sbuff_count)
+    PRINTF_SBUFFER("Writer finished. Wrote %d sbuffer nodes", sbuff_count);
       
     // TO DO:   implement mechanism so that multiple writers can unlock the rwlock! (see above)
-    DEBUG_PRINTF("Writer unlocking for buffered cleanup")
+    PRINTF_SBUFFER("Writer unlocking for buffered cleanup");
     pthread_rwlock_unlock(((sbuffer_t*)buffer)->rwlock_rw_writing);
     
-    DEBUG_PRINTF("Writer exiting")
+    PRINTF_SBUFFER("Writer exiting");
     pthread_exit(0);
     
 }
@@ -485,7 +429,7 @@ int sbuffer_add_callback(sbuffer_t* buffer, cb_func function, cb_args_t* args, i
         default             : ERROR_IF(1, "non-existing thread type! Only 'r' or 'w' allowed!");
     }
     free((&elem)->exec_lock);
-    //DEBUG_PRINTF("size of cbs_w: %d", dpl_size(buffer->cbs_w));
+    //PRINTF_SBUFFER("size of cbs_w: %d", dpl_size(buffer->cbs_w));
     return(SBUFFER_SUCCESS);
 }
 
@@ -534,7 +478,7 @@ void element_free(void ** element) {
 }
 
 int element_compare(void * x, void * y) {
-    DEBUG_PRINTF("pointer to cbw function: %p", ((sbuff_callback_t*)x)->function);
+    PRINTF_SBUFFER("pointer to cbw function: %p", ((sbuff_callback_t*)x)->function);
     return ((((sbuff_callback_t*)x)->function < ((sbuff_callback_t*)y)->function) ? -1 : 
             ((((sbuff_callback_t*)x)->function == ((sbuff_callback_t*)y)->function) &&
             ((((sbuff_callback_t*)x)->function == ((sbuff_callback_t*)y)->function))) ? 0 : 

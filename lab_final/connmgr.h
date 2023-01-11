@@ -4,24 +4,23 @@
 #ifndef __CONNMGR_H__
 #define __CONNMGR_H__
 
-#define _GNU_SOURCE
-#include <stdio.h>
-#include <stdlib.h>
+
 #include "config.h"
-#include "lib/tcpsock.h"
-#include "lib/dplist.h"
+
+
 #include <poll.h>
 #include <inttypes.h>
-#include "lib/tcpsock.h"
+#include "lib/dplist.h"
+//#include <stdbool.h>
 
 #define CONNMGR_CLOSE 1
 #define CONNMGR_SUCCESS 0
 
-#define DMSG_DATA(source_file, data) printf("%s: sensor id = %" PRIu16 " - temperature = %lf - timestamp = %ld\n","hi", (data).id, (data).value, ((long int)(data)).ts); 
+
 
 typedef struct my_connection my_connection_t;
 typedef struct {
-    sensor_data_t* pollrx_buffer;                        // 
+    sensor_data_t* pollrx_buffer;                           // 
     bool* pollrx_buffer_flag;                               // timestamp last modified
     int buff_size;
 } connmgr_rx_data_t;

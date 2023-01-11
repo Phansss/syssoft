@@ -1,84 +1,32 @@
 /**
  * \author Pieter Hanssens
  */
+
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
+
+#include <stdlib.h>
+#include <stdio.h>
+#include "debugger.h"
+#include "errhandler.h"
+#include <assert.h>
+
+#include "connmgr.h"
+
+
+
+
+#include "lib/tcpsock.h"
+#include "lib/dplist.h"
+#include <poll.h>
+
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <inttypes.h>
-#include "config.h"
-#include "lib/tcpsock.h"
-#include "connmgr.h"
-#include <wait.h>
-#include "errmacros.h"
-#include <assert.h>
-#include <poll.h>
-#include "lib/tcpsock.h"
-#include <malloc.h>
-#include <sys/types.h>
+
 #include <unistd.h>
 #include <sys/syscall.h>
-
-#define DEBUG_CONNMGR
-
-#ifdef DEBUG_CONNMGR                                                  
-#define ERROR_IF(...) _ERROR_NO_ARG(__VA_ARGS__, " ");                                  
-#define _ERROR_NO_ARG(cond,fmt,...) 									                                                             \
-        do {if (cond) {                                                                                                              \
-                pid_t* tid = (pid_t*) malloc(sizeof(pid_t));                                                                         \
-                if (tid == NULL) {                                                                                                   \
-                    fprintf(stderr, "ERROR_SBUFF [%s:%d] in %s: "fmt"%s\n",  __FILE__,__LINE__,__func__, __VA_ARGS__);               \
-                    fprintf(stderr,"    "#cond"\n");                                                                                 \
-                    fprintf(stderr,"   NOTE: Could not determine thread id due to malloc error");                                    \
-                    fflush(stderr);                                                                                                  \
-                    exit(1);                                                                                                         \
-                }                                                                                                                    \
-                *tid = syscall(__NR_gettid);                                                                                         \
-                fprintf(stderr, "ERROR_SBUFF [%s:%d] in %s_(%d): "fmt"%s\n",  __FILE__,__LINE__,__func__ ,*tid, __VA_ARGS__);        \
-                fprintf(stderr,"    "#cond"\n");                                                                                     \
-                fflush(stderr);                                                                                                      \
-                free(tid);                                                                                                           \
-                exit(1);                                                                                                             \
-            }                                                                                                                        \
-            }while(0)
-#define DEBUG_PRINTF(...) _DEBUG_NO_ARG(__VA_ARGS__, " ");                                  
-#define _DEBUG_NO_ARG(fmt,...) 									                                                                     \
-        do {pid_t* tid = (pid_t*) malloc(sizeof(pid_t));                                                                             \
-                if (tid == NULL) {                                                                                                   \
-                    fprintf(stderr, "DEBUG_SBUFF [%s:%d] in %s: "fmt"%s\n",  __FILE__,__LINE__,__func__, __VA_ARGS__);    \
-                    fprintf(stderr,"   NOTE: Could not determine thread id due to malloc error");                                    \
-                    fflush(stderr);                                                                                                  \
-                    break;                                                                                                           \
-                }                                                                                                                    \
-                *tid = syscall(__NR_gettid);                                                                                         \
-                fprintf(stderr, "DEBUG_SBUFF [%s:%d] in %s_(%d): "fmt"%s\n",  __FILE__,__LINE__,__func__ ,*tid, __VA_ARGS__);        \
-                fflush(stderr);                                                                                                      \
-                free(tid);                                                                                                           \
-            }while(0)            
-#else
-#define ERROR_IF(...) _ERROR_NO_ARG(__VA_ARGS__, " ");                                  
-#define ERROR_IF(...) _ERROR_NO_ARG(__VA_ARGS__, " ");                                  
-#define _ERROR_NO_ARG(cond,fmt,...) 									                                                             \
-        do {if (cond) {                                                                                                              \
-                pid_t* tid = (pid_t*) malloc(sizeof(pid_t));                                                                         \
-                if (tid == NULL) {                                                                                                   \
-                    fprintf(stderr, "ERROR_SBUFF [%s:%d] in %s: "fmt"%s\n",  __FILE__,__LINE__,__func__, __VA_ARGS__);               \
-                    fprintf(stderr,"    "#cond"\n");                                                                                 \
-                    fprintf(stderr,"   NOTE: Could not determine thread id due to malloc error");                                    \
-                    fflush(stderr);                                                                                                  \
-                    exit(1);                                                                                                         \
-                }                                                                                                                    \
-                *tid = syscall(__NR_gettid);                                                                                         \
-                fprintf(stderr, "ERROR_SBUFF [%s:%d] in %s_(%d): "fmt"%s\n",  __FILE__,__LINE__,__func__ ,*tid, __VA_ARGS__);        \
-                fprintf(stderr,"    "#cond"\n");                                                                                     \
-                fflush(stderr);                                                                                                      \
-                free(tid);                                                                                                           \
-            }                                                                                                                        \
-            }while(0)
-#define DEBUG_PRINTF(...) _DEBUG_NO_ARG(__VA_ARGS__, " ");
-#define _DEBUG_NO_ARG(fmt,...) (void)0
-#endif
 
 /*********************************************************CORE FUNCTIONALITY*******************************************************************/
 
@@ -130,10 +78,10 @@ void connmgr_listen(int port_number) {
             printf("sensor id = %" PRIu16 " - temperature = %lf - timestamp = %ld\n", (&((data->pollrx_buffer)[i]))->id, 
                                                                                      (&((data->pollrx_buffer)[i]))->value, 
                                                                                      (&((data->pollrx_buffer)[i]))->ts);
-            DEBUG_PRINTF("size of rx_buffer: %d", connection->rx_data->buff_size) 
+            PRINTF_CONNMGR("size of rx_buffer: %d", connection->rx_data->buff_size); 
                                             
             }
-            fprintf(sensor_data_recv,"%hd %lf %ld\n",(&((data->pollrx_buffer)[i]))->id,
+            fprintf(sensor_data_recv,"%"PRIu16 " %lf %ld\n",(&((data->pollrx_buffer)[i]))->id,
                                                      (&((data->pollrx_buffer)[i]))->value, 
                                                      (&((data->pollrx_buffer)[i]))->ts);
         }
@@ -149,7 +97,7 @@ void connmgr_free() {
 }
 
 /*********************************************************CALLBACKS*******************************************************************/
-void * element_copy(void * element) {
+void * my_client_copy(void * element) {
     int sd = 0;
      if (tcp_get_sd(((my_client_t*)element)->socket, &sd) != TCP_NO_ERROR) exit(0);
     my_client_t* copy = (my_client_t*) calloc(1, sizeof(my_client_t));
@@ -159,7 +107,7 @@ void * element_copy(void * element) {
     return (void *) copy;
 }
 
-void element_free(void ** element) {
+void my_client_free(void ** element) {
     if (*element == NULL) return;
     
     else {
@@ -173,13 +121,13 @@ void element_free(void ** element) {
     }
 }
 
-int element_compare(void * x, void * y) {
+int my_client_compare(void * x, void * y) {
     return ((((my_client_t*)x)->lm < ((my_client_t*)y)->lm) ? -1 : // sort by sid
             ((((my_client_t*)x)->lm == ((my_client_t*)y)->lm) && ((((my_client_t*)x)->socket == ((my_client_t*)y)->socket))) ? 0 : //only equal when socket == socket & lm == lm
              1);
 }
 
-void element_print(void* element) {
+void my_client_print(void* element) {
     char buff[25];
     struct tm* timeinfo;
     timeinfo = localtime(&(((my_client_t*)element)->lm));
@@ -192,16 +140,16 @@ void element_print(void* element) {
 
 void my_socket_print(my_client_t* socket) {
     printf("socket with (tcpsock_t* socket = %p\n)", socket->socket);
-    fflush(stdin);
+    //fflush(stdin); -> undefined behaviour of fflush(stdin) on linux systems.
 }
 
 /**********************************************************_MY CONNECTION FUNCTIONALITY_*********************************************************************/
 
 int myconn_pfds_update(my_connection_t* connection) {
-    pollfd_t * new_pfds =  (pollfd_t*) realloc(connection->pfds, sizeof(pollfd_t)*(dpl_size(connection->my_sockets_dplist) + 2));
+    pollfd_t * new_pfds =  (pollfd_t*) realloc(connection->pfds, (sizeof(pollfd_t)*(dpl_size(connection->my_sockets_dplist)) + 2));
     ERROR_IF(new_pfds == NULL, ERR_MALLOC('realloc pollfd_t'));
-    if (new_pfds == NULL) return 1;
-    else {
+    //if (new_pfds == connection->pfds) return 1; -> cppcheck: condition is always false
+    //else {
         connection->pfds = new_pfds;
         (connection->pfds)[0].fd = connection->pfd_server->fd;             //
         (connection->pfds)[0].events = connection->pfd_server->events;     // deepcopy the server pfd to the first pollfd in pfds
@@ -215,18 +163,18 @@ int myconn_pfds_update(my_connection_t* connection) {
             (connection->pfds)[i+1].revents = 0;
         }
         return 0;
-    }
+    //}
 }
 
 int myconn_rxbuff_update(my_connection_t* connection) {
     int count = 0;
-    sensor_data_t * new_pollrx_buffer =  (sensor_data_t *) realloc(connection->rx_data->pollrx_buffer, sizeof(sensor_data_t)*(dpl_size(connection->my_sockets_dplist) + 2));
+    sensor_data_t * new_pollrx_buffer =  (sensor_data_t *) realloc(connection->rx_data->pollrx_buffer, (sizeof(sensor_data_t)*(dpl_size(connection->my_sockets_dplist)) + 2));
     ERROR_IF(new_pollrx_buffer == NULL, ERR_MALLOC('realloc pollrx_buffer'));
-    if (new_pollrx_buffer == NULL) return 1;
+    //if (new_pollrx_buffer == connection->rx_data->pollrx_buffer) return 1; -> cppcheck: condition is always false
     
-    bool* new_pollrx_buffer_flags =  (bool*) realloc(connection->rx_data->pollrx_buffer_flag, sizeof(bool)*(dpl_size(connection->my_sockets_dplist) + 2));
+    bool* new_pollrx_buffer_flags =  (bool*) realloc(connection->rx_data->pollrx_buffer_flag, (sizeof(bool)*(dpl_size(connection->my_sockets_dplist)) + 2));
     ERROR_IF(new_pollrx_buffer_flags == NULL, ERR_MALLOC('realloc pollrx_buffer_flags'));
-    if (new_pollrx_buffer_flags == NULL) return 1;
+    //if (new_pollrx_buffer_flags == connection->rx_data->pollrx_buffer_flag) return 1; -> cppcheck: condition is always false
 
     connection->rx_data->pollrx_buffer_flag = new_pollrx_buffer_flags; 
     connection->rx_data->pollrx_buffer = new_pollrx_buffer; 
@@ -250,7 +198,7 @@ int myconn_init(my_connection_t** connection, int port_number) {
     ERROR_IF((tcp_passive_open(&((*connection)->server), port_number) != TCP_NO_ERROR), "init connection error");  
     (*connection)->timeout = false;
     (*connection)->close = false;
-    (*connection)->my_sockets_dplist = dpl_create(element_copy, element_free, element_compare, element_print);
+    (*connection)->my_sockets_dplist = dpl_create(my_client_copy, my_client_free, my_client_compare, my_client_print);
 
     (*connection)->pfd_server = (pollfd_t*) calloc(1, sizeof(pollfd_t));
     ERROR_IF((*connection)->pfd_server == NULL, ERR_MALLOC("pollfd_t"));
@@ -303,18 +251,19 @@ int myconn_remove_client(my_connection_t* connection, my_client_t* client) {
 
 int myconn_get_rx_data(my_connection_t* connection, connmgr_rx_data_t** rx_data_ptr) {
     ERROR_IF(connection == NULL, "param 'connection' is NULL!");
-    ERROR_IF(rx_data_ptr == NULL, "param 'rx_data' is NULL!");
-    (*rx_data_ptr) = (connection->rx_data);
+    if (rx_data_ptr == NULL) {ERROR_IF(rx_data_ptr == NULL, "param 'rx_data' is NULL!"); exit(1);}
+    if (!(*rx_data_ptr == NULL))(*rx_data_ptr) = (connection->rx_data);
+    else ERROR_IF(1, "param 'rx_data' is NULL!");
     return 0;
 }
 
 int myconn_listen(my_connection_t* connection) {
     my_client_t* client = NULL;
-    int bytes = 0;
-    int result = 0;
+    int bytes;
+    int tcp_result;
     tcpsock_t* new_client_socket = NULL;
     my_client_t new_client = {.socket = NULL, .lm = 0};
-    //DEBUG_PRINTF("Address of connection->timeout: %p", &(connection->timeout))
+    //PRINTF_CONNMGR("Address of connection->timeout: %p", &(connection->timeout));
     if (connection->timeout) connection->close = true; // if timeout was not reset in previous loop, mark the while loop to close.
     connection->timeout = true;
 
@@ -323,10 +272,9 @@ int myconn_listen(my_connection_t* connection) {
     }
 
     while ((!(connection->timeout)) || (!(connection->close))) {
-        POLL_ERROR(poll(connection->pfds, dpl_size(connection->my_sockets_dplist) + 1, TIMEOUT*1000));        // BLOCK until something happens, or timeout! -> puts current thread/process to sleep. TIMEOUT expressed in seconds but attr is in miliseconds.            
-
+        ERROR_IF(poll(connection->pfds, dpl_size(connection->my_sockets_dplist) + 1, TIMEOUT*1000) == -1, "Polling failed\n");        // BLOCK until something happens, or timeout! -> puts current thread/process to sleep. TIMEOUT expressed in seconds but attr is in miliseconds.            
         // after POLL_TIMEOUT, check for events on server pfd
-        //DEBUG_PRINTF("Address of connection->pfds: %p", &(connection->pfds))
+        //PRINTF_CONNMGR("Address of connection->pfds: %p", &(connection->pfds));
         if(((connection->pfds)[0]).revents & POLLIN) {                                                                               
             if (tcp_wait_for_connection(connection->server, &new_client_socket) != TCP_NO_ERROR) exit(EXIT_FAILURE);     
             new_client.socket = new_client_socket;
@@ -342,26 +290,34 @@ int myconn_listen(my_connection_t* connection) {
             client = dpl_get_element_at_index(connection->my_sockets_dplist, i-1);
 
             // check for events on current client
-            //DEBUG_PRINTF("Address of connection->pfds: %p", &(connection->pfds))
+            //PRINTF_CONNMGR("Address of connection->pfds: %p", &(connection->pfds));
             if(((connection->pfds)[i]).revents & POLLIN) {
                 //printf("Received sensor data!\n");
                  // read sensor ID
 
                 // insert data into my connection 
                 bytes = sizeof(((connection->rx_data->pollrx_buffer)[i-1]).id);
-                result = tcp_receive(client->socket, (void *) &(((connection->rx_data->pollrx_buffer)[i-1]).id), &bytes);
+                tcp_result = tcp_receive(client->socket, (void *) &(((connection->rx_data->pollrx_buffer)[i-1]).id), &bytes);
+                ERROR_IF(tcp_result == TCP_SOCKET_ERROR, "CONNMGR: Socket is NULL or not yet bound");
+                ERROR_IF(tcp_result == TCP_CONNECTION_CLOSED, "CONNMGR: Connection closed");
+                ERROR_IF(tcp_result == TCP_SOCKOP_ERROR, "CONNMGR: Socket error occured while receiving data");
                 // read temperature
                 bytes = sizeof(((connection->rx_data->pollrx_buffer)[i-1]).value);
-                result = tcp_receive(client->socket, (void *) &(((connection->rx_data->pollrx_buffer)[i-1]).value), &bytes);
+                tcp_result = tcp_receive(client->socket, (void *) &(((connection->rx_data->pollrx_buffer)[i-1]).value), &bytes);
+                ERROR_IF(tcp_result == TCP_SOCKET_ERROR, "CONNMGR: Socket is NULL or not yet bound");
+                ERROR_IF(tcp_result == TCP_CONNECTION_CLOSED, "CONNMGR: Connection closed");
+                ERROR_IF(tcp_result == TCP_SOCKOP_ERROR, "CONNMGR: Socket error occured while receiving data");
                 // read timestamp
                 bytes = sizeof(((connection->rx_data->pollrx_buffer)[i-1]).ts);
-                result = tcp_receive(client->socket, (void *) &(((connection->rx_data->pollrx_buffer)[i-1]).ts), &bytes);
-
-                if ((result == TCP_NO_ERROR) && bytes) {
+                tcp_result = tcp_receive(client->socket, (void *) &(((connection->rx_data->pollrx_buffer)[i-1]).ts), &bytes);
+                ERROR_IF(tcp_result == TCP_SOCKET_ERROR, "CONNMGR: Socket is NULL or not yet bound");
+                ERROR_IF(tcp_result == TCP_CONNECTION_CLOSED, "CONNMGR: Connection closed");
+                ERROR_IF(tcp_result == TCP_SOCKOP_ERROR, "CONNMGR: Socket error occured while receiving data");
+                if ((tcp_result == TCP_NO_ERROR) && bytes) {
                     (connection->rx_data->pollrx_buffer_flag)[i-1] = true;
-                    printf("%s: sensor id = %" PRIu16 " - temperature = %lf - timestamp = %ld\n","Connmgr:", ((connection->rx_data->pollrx_buffer)[i-1]).id, ((connection->rx_data->pollrx_buffer)[i-1]).value,((long int)((connection->rx_data->pollrx_buffer)[i-1]).ts)); // set flag that data has been received onthis position in the buffer.
+                    PRINTF_CONNMGR("%s: sensor id = %" PRIu16 " - temperature = %lf - timestamp = %ld\n","Connmgr:", ((connection->rx_data->pollrx_buffer)[i-1]).id, ((connection->rx_data->pollrx_buffer)[i-1]).value,((long int)((connection->rx_data->pollrx_buffer)[i-1]).ts)); // set flag that data has been received onthis position in the buffer.
                     
-                    //DEBUG_PRINTF(DMSG_DATA("CONNMGR",((connection->rx_data->pollrx_buffer)[i-1])));
+                    //PRINTF_CONNMGR(DMSG_DATA("CONNMGR",((connection->rx_data->pollrx_buffer)[i-1])));
                     
                     //printf("sensor id = %" PRIu16 " - temperature = %g - timestamp = %ld\n", 
                                         //data.id, 
@@ -372,12 +328,11 @@ int myconn_listen(my_connection_t* connection) {
                     connection->close = false;
                 }
             }
-            //DEBUG_PRINTF("Address of client->lm: %p", &(client->lm))
+            //PRINTF_CONNMGR("Address of client->lm: %p", &(client->lm));
             if ((time(NULL)-(client->lm)) >= TIMEOUT) { // time_t exprssed in seconds
                myconn_remove_client(connection, client);
             }
         }
-        printf("returning\n");
         return CONNMGR_SUCCESS;
     }
     return CONNMGR_CLOSE;

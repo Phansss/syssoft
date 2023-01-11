@@ -1,6 +1,12 @@
 TITLE_COLOR = \033[33m
 NO_COLOR = \033[0m
 
+SHELL = /bin/sh
+.SUFFIXES:
+.SUFFIXES: .c .o
+LDCONFIG = ldconfig
+FLAGS = -std=c11 -Werror -lm $(shell pkg-config --cflags --libs check)
+
 # when executing make, compile all exe's
 all: sensor_gateway sensor_node file_creator
 
@@ -53,8 +59,29 @@ clean:
 clean-all: clean
 	rm -rf lib/*.so
 
+main_fake: 
+	main.c connmgr.c datamgr.c sensor_db.c sbuffer.c lib/libdplist.so lib/libtcpsock.so
+	@echo "$(TITLE_COLOR)\n***** CPPCHECK *****$(NO_COLOR)"
+	cppcheck --enable=all --suppress=missingIncludeSystem main.c connmgr.c datamgr.c sensor_db.c sbuffer.c
+	@echo "$(TITLE_COLOR)\n***** COMPILING sensor_gateway *****$(NO_COLOR)"
+	gcc main.c      -Wall -std=c11 -Werror -DSET_MIN_TEMP=10 -DSET_MAX_TEMP=20 -DTIMEOUT=5 -o main.       -fdiagnostics-color=auto
+	gcc connmgr.c   -Wall -std=c11 -Werror -DSET_MIN_TEMP=10 -DSET_MAX_TEMP=20 -DTIMEOUT=5 -o connmgr.o   -fdiagnostics-color=auto
+	gcc datamgr.c   -Wall -std=c11 -Werror -DSET_MIN_TEMP=10 -DSET_MAX_TEMP=20 -DTIMEOUT=5 -o datamgr.o   -fdiagnostics-color=auto
+	gcc sensor_db.c -Wall -std=c11 -Werror -DSET_MIN_TEMP=10 -DSET_MAX_TEMP=20 -DTIMEOUT=5 -o sensor_db.o -fdiagnostics-color=auto
+	gcc sbuffer.c   -Wall -std=c11 -Werror -DSET_MIN_TEMP=10 -DSET_MAX_TEMP=20 -DTIMEOUT=5 -o sbuffer.o   -fdiagnostics-color=auto
+	@echo "$(TITLE_COLOR)\n***** LINKING sensor_gateway *****$(NO_COLOR)"
+	gcc main.o connmgr.o datamgr.o sensor_db.o sbuffer.o -ldplist -ltcpsock -lpthread -o sensor_gateway -Wall -L./lib -Wl,-rpath=./lib -lsqlite3 -fdiagnostics-color=auto
+
+main: 
+	gcc -Wall main.c connmgr.c datamgr.c sensor_db.c sbuffer.c -o ./build/main_app lib/libdplist.so lib/libtcpsock.so -lsqlite3 $(FLAGS)  
+	./build/main_app
+
+main_debug: 
+	gcc -g -Wall main.c connmgr.c datamgr.c sensor_db.c sbuffer.c -o ./build/main_app_debug lib/libdplist.so lib/libtcpsock.so -lsqlite3 $(FLAGS)  
+	export CK_FORK=no ; gdb -q -tui ./build/main_app_debug
+
 run : sensor_gateway sensor_node
-    @echo "Add your own implementation here..."
+	@echo "Add your own implementation here..."
 
 zip:
-    zip lab_final.zip main.c connmgr.c connmgr.h datamgr.c datamgr.h sbuffer.c sbuffer.h sensor_db.c sensor_db.h config.h lib/dplist.c lib/dplist.h lib/tcpsock.c lib/tcpsock.h
+	zip lab_final.zip main.c connmgr.c connmgr.h datamgr.c datamgr.h sbuffer.c sbuffer.h sensor_db.c sensor_db.h config.h lib/dplist.c lib/dplist.h lib/tcpsock.c lib/tcpsock.h
