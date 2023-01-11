@@ -1,71 +1,36 @@
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
+#define _GNU_SOURCE
 
 #include "datamgr.h"
 #include "lib/dplist.h"
-
 #include <assert.h>
 
-#ifdef DEBUG
-void dpl_print_special(dplist_t* list, char const * caller_name, int caller_line, char const * caller_file )
-{
-    //printf("----------------------------------------\n");
-    printf("\n");
-    printf( "%5s Line %d in %s (%s):\n","", caller_line, caller_file, caller_name);
-    dpl_print(list);
-}
-#endif
-#ifdef DEBUG
-#define dpl_print(list) dpl_print_special(list, __func__, __LINE__, __FILE__)
-#endif
+#define DATAMGR_READ_ERROR 1
+/** Structure to store sensor logistics.
+ * 
+*/
+typedef struct my_sensor {
+    uint16_t rid;                             // room id
+    sensor_id_t sid;                          // sensor id
+    sensor_value_t ravg;                      // running average
+    sensor_value_t rvalues[RUN_AVG_LENGTH];   // running values
+    sensor_ts_t lm;                           // last modified
+    int rvalues_valid;                        // count non-zero values in rvalues at startup of the application
+} my_sensor_t;
 
-dplist_t* sensor_list = NULL;
-
-/*****************************************************LAB METHODS**************************************************************/
+//Wrapper function for lab 5. Not used in final application.
 void datamgr_parse_sensor_files(FILE *fp_sensor_map, FILE *fp_sensor_data) {
     // Create and parse sensors into dplist
     sensor_list = dpl_create(element_copy, element_free, element_compare, element_print);
     parse_sensor_map(fp_sensor_map, &sensor_list);
 
-    sensor_data_t* buffer = malloc(sizeof(sensor_data_t));            
-    assert(buffer != NULL);
-    //read and store the data in the sensor list, print logs
-    process_sensor_data(fp_sensor_data, sensor_list, buffer);
-
-    free(buffer);
-    buffer = NULL;     
+    sensor_data_t data_rx = {.id = 0, .ts = 0, .value = 0};
+    while  (read(&(data_rx.id), sizeof(sensor_id_t), 1, fp_sensor_data)!= 0) {
+        fread(&(data_rx.value), sizeof(sensor_value_t), 1, fp_sensor_data);
+        fread(&(data_rx.ts), sizeof(sensor_ts_t), 1, fp_sensor_data); 
+        process_sensor_data(&data_rx);
+    }
 }
 
-void datamgr_free() {
-    dpl_free(&sensor_list, true);
- }
-
-uint16_t datamgr_get_room_id(sensor_id_t sensor_id) {
-    my_sensor_t* sensor = sensor_search(sensor_list, sensor_id);
-    ERROR_HANDLER(sensor == NULL, ERR_INVALID_ID);
-    return sensor->rid;
-}
-
-sensor_value_t datamgr_get_avg(sensor_id_t sensor_id) {
-    my_sensor_t* sensor = sensor_search(sensor_list, sensor_id);
-    ERROR_HANDLER(sensor == NULL, ERR_INVALID_ID);
-    return sensor->ravg;
-}
-
-time_t datamgr_get_last_modified(sensor_id_t sensor_id) {
-    my_sensor_t* sensor = sensor_search(sensor_list, sensor_id);
-    ERROR_HANDLER(sensor == NULL, ERR_INVALID_ID);
-    return sensor->lm;
-}
-
-// TO DO: Check for duplicate IDs in different rooms(?)
-int datamgr_get_total_sensors() {
-    return dpl_size(sensor_list);
-}
-
-
-/*****************************************************CORE FUNCTIONALITY**************************************************************/
 void parse_sensor_map(FILE *fp_sensor_map, dplist_t** dplist){
     my_sensor_t* new_sensor = NULL;
     sensor_create(&new_sensor, 0, 0);
@@ -75,42 +40,55 @@ void parse_sensor_map(FILE *fp_sensor_map, dplist_t** dplist){
     free(new_sensor);
 }
 
-void process_sensor_data(FILE *binary_file, dplist_t* sensor_list, sensor_data_t* buffer) {
+void process_sensor_data(sensor_data_t* data) {
     my_sensor_t* curr_sensor = NULL;                
     int i = 0;
-    while (fread(&(buffer->id), sizeof(sensor_id_t), 1, binary_file)!= 0) {
-        i++;
-        fread(&(buffer->value), sizeof(sensor_value_t), 1, binary_file);
-        fread(&(buffer->ts), sizeof(sensor_ts_t), 1, binary_file);     
-
-        //Search for the sensor in dplist
-        curr_sensor = sensor_search(sensor_list, buffer->id);
-        if (curr_sensor == NULL) { 
-            fprintf(stderr, "Received data for missing sensor (%d)!", buffer->id);
-            continue;
-        }
-        //Update the sensor in the dplist 
-        sensor_update(curr_sensor, buffer->value, buffer->ts);
-        //sensor_print(curr_sensor);
-
-        char buff[25];
-        struct tm * timeinfo;
-        timeinfo = localtime(&(curr_sensor->lm));
-        strftime(buff, sizeof(buff), "%c", timeinfo);
-
-        if (curr_sensor->ravg > SET_MAX_TEMP) fprintf(stderr, "%s - %2.2lf°C too high for sensor %d in room %d!\n", 
-            buff, curr_sensor->ravg, curr_sensor->sid, curr_sensor->rid);
-        if (curr_sensor->ravg < SET_MIN_TEMP) fprintf(stderr, "%s - %2.2lf°C too low for sensor %d in room %d!\n", 
-            buff, curr_sensor->ravg, curr_sensor->sid, curr_sensor->rid);
-    
+ 
+    //Search for the sensor in dplist
+    curr_sensor = sensor_search(sensor_list, data->id);
+    if (curr_sensor == NULL) { 
+        fprintf(stderr, "Received data for missing sensor (%d)!", data->id);
     }
-    //printf("\nSuccessfully read %d data samples.\n\n", i);
+    //Update the sensor in the dplist 
+    sensor_update(curr_sensor, data->value, data->ts);
 
+    //Print a message depending on the running average
+    char buff[25];
+    struct tm * timeinfo;
+    timeinfo = localtime(&(curr_sensor->lm));
+    strftime(buff, sizeof(buff), "%c", timeinfo);
+
+    if (curr_sensor->ravg > SET_MAX_TEMP) fprintf(stderr, "%s - %2.2lf°C too high for sensor %d in room %d!\n", 
+        buff, curr_sensor->ravg, curr_sensor->sid, curr_sensor->rid);
+    if (curr_sensor->ravg < SET_MIN_TEMP) fprintf(stderr, "%s - %2.2lf°C too low for sensor %d in room %d!\n", 
+        buff, curr_sensor->ravg, curr_sensor->sid, curr_sensor->rid);
+}
+
+uint16_t datamgr_get_room_id(sensor_id_t sensor_id) {
+    my_sensor_t* sensor = sensor_search(sensor_list, sensor_id);
+    //ERROR_HANDLER(sensor == NULL, ERR_INVALID_ID);
+    return sensor->rid;
+}
+
+sensor_value_t datamgr_get_avg(sensor_id_t sensor_id) {
+    my_sensor_t* sensor = sensor_search(sensor_list, sensor_id);
+    //ERROR_HANDLER(sensor == NULL, ERR_INVALID_ID);
+    return sensor->ravg;
+}
+
+time_t datamgr_get_last_modified(sensor_id_t sensor_id) {
+    my_sensor_t* sensor = sensor_search(sensor_list, sensor_id);
+    //ERROR_HANDLER(sensor == NULL, ERR_INVALID_ID);
+    return sensor->lm;
+}
+
+// TO DO: Check for duplicate IDs in different rooms(?)
+int datamgr_get_total_sensors() {
+    return dpl_size(sensor_list);
 }
 
 
-
-/**********************************************************SENSOR*********************************************************************/
+/**********************************************************_HELPER FUNCTIONS_*********************************************************************/
 void sensor_create(my_sensor_t** sensor, sensor_id_t sid, uint16_t rid) {
     assert(*sensor==NULL);
     *sensor = malloc(sizeof(my_sensor_t));
@@ -141,7 +119,7 @@ my_sensor_t* sensor_update(my_sensor_t* sensor, sensor_value_t value, sensor_ts_
     return sensor;
 }
 
-/* void sensor_print(my_sensor_t* sensor) {
+void sensor_print(my_sensor_t* sensor) {
     char buff[25];
     struct tm * timeinfo;
     timeinfo = localtime(&(sensor->lm));
@@ -157,7 +135,6 @@ my_sensor_t* sensor_update(my_sensor_t* sensor, sensor_value_t value, sensor_ts_
     }
     printf("%2.2lf]\n", (sensor->rvalues)[RUN_AVG_LENGTH-1]);
 }
- */
 
 void sensor_push_value(my_sensor_t* sensor, sensor_value_t value) {
     int i=0;
@@ -183,8 +160,7 @@ void sensor_update_ravg(my_sensor_t* sensor) {
 }
 
 
-
-/*********************************************************CALLBACKS*******************************************************************/
+/********************************************************* _DPLIST CALLBACKS_*******************************************************************/
 void * element_copy(void * element) {
     my_sensor_t* copy = malloc(sizeof (my_sensor_t));
     assert(copy != NULL);

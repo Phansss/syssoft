@@ -1,25 +1,25 @@
 #define _GNU_SOURCE
 
-
-#include "config.h"
-#include "sbuffer.h"
-
-#include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include "config.h"
+#include "main_debug.h"
+#include "callbacks/callbacks.h"
+
+
+#define DEBUG
+#define DEB_EXIT
+
 #include <pthread.h>
 #include <semaphore.h>
 #include <inttypes.h>
-#define DEBUG
-#define DEB_EXIT
+
 #include "errmacros.h"
 #include "lib/dplist.h"
 #include <connmgr.h>
 #include "lib/tcpsock.h"
-#include "callbacks.h"
 
-#include "main_debug.h"
-#include "main.h"
+
 
 #define INIT_PFDA 5   //Initial size of polling array
 #define SERVER_LISTEN POLLIN & POLLHUP
@@ -57,56 +57,46 @@ void my_socket_update(my_socket_t* socket);
 typedef size_t (*Freadfunc)(void*, size_t, size_t, FILE*);
 
 
-FILE* binary_file_in;
-FILE* binary_file_out;
-
-pthread_t writer;
-pthread_t reader1;
-pthread_t reader2;
-sbuffer_t* buffer;
-
-
-// Variables for incoming new connection:
-tcpsock_t* passive_open_socket = NULL;
-tcpsock_t* new_socket_dummy = NULL;
-my_socket_t my_socket_element = {.socket = NULL, .lm = 0};
-//Variables to receive data from a client sensor:
-my_socket_t* client = NULL;
-sensor_data_t data = {.id = 0, .value = 0, .ts = 0};
-int bytes = 0;
-int result = 0;
-// Variables to control the while loop: Stop while loop if (timeout == true and close == true):
-bool timeout = false;   
-bool close = false;  
-
 int main() {
+  int child = fork();
+  SYSCALL_ERROR(child);
 
-  //initialize sbuffer
-  if (sbuffer_init(&buffer, SBUFF_READER_THREADS, SBUFF_WRITER_THREADS) != SBUFFER_SUCCESS) exit(1);
+  if (child == 0) {
+    
 
-  //initialize resources
-  read_file_t* read_file_args;
-  write_file_t* write_file_args;
-  read_file_init(&write_file_args);
-  write_file_init(&write_file_args);
+  } 
+  else {
+    pthread_t writer;
+    pthread_t reader1;
+    pthread_t reader2;
+    sbuffer_t* buffer;
 
-  sbuffer_add_callback(buffer, read_file, (cb_args_t*)read_file_args, SBUFFER_WRITER);
-  sbuffer_add_callback(buffer, write_file, (cb_args_t*)write_file_args, SBUFFER_READER);
+    //initialize sbuffer
+    if (sbuffer_init(&buffer, SBUFF_READER_THREADS, SBUFF_WRITER_THREADS) != SBUFFER_SUCCESS) exit(1);
 
-  PTH_create(&writer, NULL, writer_thread, buffer); 
-  PTH_create(&reader1, NULL, reader_thread, buffer); 
-  PTH_create(&reader2, NULL, reader_thread, buffer); 
+    //initialize resources
+    read_file_t* read_file_args;
+    write_file_t* write_file_args;
+    read_file_init(&write_file_args);
+    write_file_init(&write_file_args);
+
+    sbuffer_add_callback(buffer, read_file, (cb_args_t*)read_file_args, SBUFFER_WRITER);
+    sbuffer_add_callback(buffer, write_file, (cb_args_t*)write_file_args, SBUFFER_READER);
+
+    PTH_create(&writer, NULL, writer_thread, buffer); 
+    PTH_create(&reader1, NULL, reader_thread, buffer); 
+    PTH_create(&reader2, NULL, reader_thread, buffer); 
   
-  pthread_join(writer, NULL);
-  pthread_join(reader1, NULL);
-  pthread_join(reader2, NULL);
+    pthread_join(writer, NULL);
+    pthread_join(reader1, NULL);
+    pthread_join(reader2, NULL);
 
-
-  // Close resources
-  read_file_cleanup(&read_file_args);
-  write_file_cleanup(&write_file_args);
+    // Close resources
+    read_file_cleanup(&read_file_args);
+    write_file_cleanup(&write_file_args);
   
-  sbuffer_free(&buffer);
+    sbuffer_free(&buffer);
+  }  
   return 0;
 }
 

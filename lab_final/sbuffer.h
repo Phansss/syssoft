@@ -30,7 +30,6 @@
 
 #define ERR_SBUFF_INIT "Not enough malloc memory for sbuffer"
 
-
 #define PTH_create( a, b, c, d ) \
     (pthread_create( (a), (b), (c), (d) ) != 0 ? abort() : (void)0 )
 
@@ -47,28 +46,22 @@
     (pthread_join( (a), (b) ) != 0 ? abort() : (void)0 )
 
 #define NO_OF_READERS 2
+#define DATA_BUFFER_SIZE 5
 
 typedef struct sbuffer sbuffer_t;
 
-/**
- * attributes for the threads to access shared resources
- */
+typedef struct data_buffer {
+    sensor_data_t** head;
+    size_t size;
+} data_buffer_t;
 
 typedef struct cb_args {
-    sensor_data_t* data;    // pointer to data struct initalized on thread stack.
+    data_buffer_t* data_buffer;    // pointer to data struct initalized on thread stack.
     // void* other;   // user defined struct containing other arguments to process the data
 } cb_args_t;
 
-/** typefunc to define functions that receive/send data in and out of the sbuffer. 
- *  the sensor data is initialized on the writer stack and can be retrieved/modified 
- * using the pointer. 
- * The void argument is used for data processing arguments
-*/
 typedef int (*cb_func)(cb_args_t*);
 
-/** callback functions for in the dplist of the sbuff user.
- * 
-*/
 typedef struct sbuff_callback {
     cb_func function;
     cb_args_t* arguments;
@@ -144,5 +137,6 @@ int sbuffer_add_callback(sbuffer_t* buffer, cb_func function, cb_args_t* args, i
  *             Note that the user is resposible to not modify these while the threads operate!
 */
 int sbuffer_remove_callback(sbuffer_t* buffer, cb_func function, cb_args_t* args);
+
 
 #endif  //_SBUFFER_H_

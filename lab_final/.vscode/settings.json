@@ -1,0 +1,9 @@
+{
+    "C_Cpp.errorSquiggles": "enabled",
+    "files.associations": {
+        "errmacros.h": "c",
+        "inttypes.h": "c",
+        "dplist.h": "c",
+        "connmgr.h": "c"
+    }
+}

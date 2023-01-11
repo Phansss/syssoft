@@ -98,7 +98,7 @@ void process_sensor_data(FILE *binary_file, dplist_t* sensor_list, sensor_data_t
         timeinfo = localtime(&(curr_sensor->lm));
         strftime(buff, sizeof(buff), "%c", timeinfo);
 
-        if (curr_sensor->ravg > SET_MAX_TEMP) fprintf(stderr, "%s - %2.2lf°C too high for sensor %d in room %d!\n", 
+        if (curr_sensor->ravg > SET_MAX_TEMP) fprintf(stderr, "%s - °C too high for sensor %d in room %d!\n", 
             buff, curr_sensor->ravg, curr_sensor->sid, curr_sensor->rid);
         if (curr_sensor->ravg < SET_MIN_TEMP) fprintf(stderr, "%s - %2.2lf°C too low for sensor %d in room %d!\n", 
             buff, curr_sensor->ravg, curr_sensor->sid, curr_sensor->rid);

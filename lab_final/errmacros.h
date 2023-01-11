@@ -1,7 +1,10 @@
 #ifndef __errmacros_h__
 #define __errmacros_h__
 
+
 #include <errno.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 
 #define SYSCALL_ERROR(err) 									\
 		do {												\

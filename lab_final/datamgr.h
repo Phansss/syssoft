@@ -22,31 +22,13 @@
 #error "SET_MIN_TEMP not set"
 #endif
 
-/** Structure to store sensor logistics.
- * 
-*/
-typedef struct {
-    uint16_t rid;                           // room id
-    sensor_id_t sid;                        // sensor id
-    sensor_value_t ravg;                    // Running average
-    sensor_value_t rvalues[RUN_AVG_LENGTH];   // Running values
-    sensor_ts_t lm;                         // timestamp last modified
-    int rvalues_valid;                      // number of valid values in the rvalues buffer
-} my_sensor_t;
 
-/*
- * Use ERROR_HANDLER() for handling memory allocation problems, invalid sensor IDs, non-existing files, etc.
- */
-#define ERROR_HANDLER(condition, ...)    do {                       \
-                      if (condition) {                              \
-                        printf("\nError: in %s - function %s at line %d: %s\n", __FILE__, __func__, __LINE__, __VA_ARGS__); \
-                        exit(EXIT_FAILURE);                         \
-                      }                                             \
-                    } while(0)
-#define ERR_INVALID_ID "ID not found in sensor list."
+typedef struct my_sensor my_sensor_t;
 
+dplist_t* sensor_list;
 
 /*****************************************************LAB METHODS**************************************************************/
+
 /**
  *  This method holds the core functionality of your datamgr. It takes in 2 file pointers to the sensor files and parses them. 
  *  When the method finishes all data should be in the internal pointer list and all log messages should be printed to stderr.
@@ -91,23 +73,17 @@ time_t datamgr_get_last_modified(sensor_id_t sensor_id);
  */
 int datamgr_get_total_sensors();
 
-/*****************************************************CORE FUNCTIONALITY**************************************************************/
 
-/** Parse the sensors from directory file room_sensor.map to the dplist
+/** Parse the sensors from directory file room_sensor.map to the global sensor
  * \param fp_sensor_map pointer to the opened file stream.
  * \param dplist the dplist in which to store the sensors.
 */
 void parse_sensor_map(FILE *fp_sensor_map, dplist_t** dplist);
 
 /** Reads sensor data from a binary file in the buffer and updates the appropriate sensors in sensor_list.
- * \param binary_file pointer to an opened filestream containing the sensor data
- * \param sensor_list dplist with the available sensors
- * \param buffer empty data struct buffer with fields for sensor id, value and timestamp
+ * \param data data struct with current sensor id, value and timestamp
 */
-void process_sensor_data(FILE *binary_file, dplist_t* sensor_list, sensor_data_t* buffer);
-
-
-
+void process_sensor_data(sensor_data_t* data);
 
 /**********************************************************SENSOR*********************************************************************/
 /**

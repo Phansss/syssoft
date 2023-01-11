@@ -23,10 +23,8 @@
 
 int test = 0;
 
-#define _sbuffer_ (((sbuff_thread_arg_t*)arg)->sbuffer)
-#define _callback_arg_ (((sbuff_thread_arg_t*)arg)->data_processor_arguments)
-#define _callback_func_ (((sbuff_thread_arg_t*)arg)->data_processor)
-#define _node_callbacks_ (((sbuff_thread_arg_t*)arg)->sbuff_thread_callbacks)
+
+
 
 #ifdef DEBUG_SBUFF                                                  
 #define ERROR_IF(...) _ERROR_NO_ARG(__VA_ARGS__, " ");                                  
@@ -204,7 +202,6 @@ int sbuffer_free(sbuffer_t **buffer) {
         (*buffer)->head = (*buffer)->head->next;
         free(dummy);
     }
-
     pthread_rwlock_destroy((*buffer)->rwlock_rw_writing);
     sem_destroy((*buffer)->semaphore_rw_buffercount);
     sem_destroy((*buffer)->semaphore_count_nodes_ready);
@@ -219,11 +216,8 @@ int sbuffer_free(sbuffer_t **buffer) {
         pthread_mutex_destroy(((*buffer)->nodelock_array)[i]);
         free(((*buffer)->nodelock_array)[i]);
     }
-    
-    
     dpl_free(&((*buffer)->cbs_r), true);
     dpl_free(&((*buffer)->cbs_w), true);
-    
     free((*buffer)->rwlock_rw_writing);
     free((*buffer)->semaphore_rw_buffercount);
     free((*buffer)->semaphore_count_nodes_ready);
@@ -304,15 +298,19 @@ int rb_lock_execute(sbuffer_t* buffer) {
                         dummy_callback_t = dpl_get_element_at_index(buffer->cbs_r, j);
                         if (check_exec_arr[j] != 1){                //if function not yet executed
                             if(pthread_mutex_trylock(dummy_callback_t->exec_lock) == 0) { //if lock acquired
-                                *(dummy_callback_t->arguments->data) = dummy_sbuff_node->data;
-                                (dummy_callback_t->function)(dummy_callback_t->arguments); // execute reader callback
-                                check_exec_arr[j] = 1;
-                                count_r_callback_exec--;
-                                //count++;
-                                pthread_mutex_unlock(dummy_callback_t->exec_lock);
-                                GET_CALLBACK_FUNCTION_NAME(dummy_callback_t->function); // THESE TWO GO ALWAYS TOGETHER 
-                                //DEBUG_PRINTF("Reader executed callback function: %s", f_name); 
-                                FREE_CALLBACK_FUNCTION_NAME;                            // THESE TWO GO ALWAYS TOGETHER
+                                
+                                for (int k = 0; k< ((cb_args_t*)(dummy_callback_t->arguments))->data_buffer->size; k++) {
+                                    *((dummy_callback_t->arguments->data_buffer->head)[k]) = dummy_sbuff_node->data;
+                                    (dummy_callback_t->function)(dummy_callback_t->arguments); // execute reader callback
+                                    check_exec_arr[j] = 1;
+                                    count_r_callback_exec--;
+                                    //count++;
+                                    pthread_mutex_unlock(dummy_callback_t->exec_lock);
+                                    GET_CALLBACK_FUNCTION_NAME(dummy_callback_t->function); // THESE TWO GO ALWAYS TOGETHER 
+                                    //DEBUG_PRINTF("Reader executed callback function: %s", f_name); 
+                                    FREE_CALLBACK_FUNCTION_NAME;                            // THESE TWO GO ALWAYS TOGETHER
+                                }
+
                             }
                         }
                     }
@@ -330,7 +328,9 @@ int rb_lock_execute(sbuffer_t* buffer) {
 
 
 void *reader_thread(void *buffer) {
+    
     DEBUG_PRINTF("Reader thread started")
+    
     pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_rw_startreaders);                                                        // Wait until all writers have buffered.
     int result = 0;
     DEBUG_PRINTF("Reader starts reading ")
@@ -412,17 +412,22 @@ void *writer_thread(void *buffer) {
     int sbuff_count = 0;
     int wr_status = 0;
     sbuff_callback_t* cb = NULL;
-    //Call user callback data processor
+
+    //initialize callback & accompanying data_buffer
     cb = (sbuff_callback_t*)(dpl_get_element_at_index((((sbuffer_t*)buffer)->cbs_w), 0));
     ERROR_IF(cb == NULL, "No callback for sbuffer writer thread!");
 
-    wr_status = (cb->function)((cb_args_t*)(cb->arguments));
+    // callback execution
+    wr_status = (cb->function)((cb_args_t*)(cb->arguments)); 
     while (wr_status != DATA_PROCESS_ERROR) {
-        sbuffer_insert(((sbuffer_t*)buffer), ((cb_args_t*)(cb->arguments))->data);
-        sbuff_count++;
-        if (sbuff_count == (SBUFF_READER_THREADS*SBUFF_WRITE_BUFFER)) break; // buffer until sbuffer contians SBUFF_READER_THREADS + 1 data nodes
-        wr_status = (cb->function)(cb->arguments);
+        for (int i = 0; i< ((cb_args_t*)(cb->arguments))->data_buffer->size; i++) {
+            sbuffer_insert(((sbuffer_t*)buffer), (((cb_args_t*)(cb->arguments))->data_buffer->head)[i]);
+            sbuff_count++;
+            if (sbuff_count == (SBUFF_READER_THREADS*SBUFF_WRITE_BUFFER)) break; // buffer until sbuffer contians SBUFF_READER_THREADS + 1 data nodes
+            wr_status = (cb->function)(cb->arguments);
+        }
     }
+
     //ERROR_IF(wr_status == DATA_PROCESS_ERROR, "Error receving data!");
     DEBUG_PRINTF("Writer buffered %d sbuffer nodes.", sbuffer_size(((sbuffer_t*)buffer)))
     
@@ -436,10 +441,12 @@ void *writer_thread(void *buffer) {
     DEBUG_PRINTF("Writer continue writing")
     wr_status = (cb->function)(cb->arguments);
     while (wr_status != DATA_PROCESS_ERROR) {
-        sbuffer_insert(((sbuffer_t*)buffer), ((cb_args_t*)(cb->arguments))->data);
-        sbuff_count++;
-        sched_yield(); 
-        wr_status = (cb->function)(cb->arguments);      
+        for (int i = 0; i< ((cb_args_t*)(cb->arguments))->data_buffer->size; i++) {
+            sbuffer_insert(((sbuffer_t*)buffer), (((cb_args_t*)(cb->arguments))->data_buffer->head)[i]);
+            sbuff_count++;
+            sched_yield(); 
+            wr_status = (cb->function)(cb->arguments);  
+        }    
     }
     //ERROR_IF(wr_status == DATA_PROCESS_ERROR, "Error receving data!");
     DEBUG_PRINTF("Writer finished. Wrote %d sbuffer nodes", sbuff_count)
@@ -448,13 +455,16 @@ void *writer_thread(void *buffer) {
     DEBUG_PRINTF("Writer unlocking for buffered cleanup")
     pthread_rwlock_unlock(((sbuffer_t*)buffer)->rwlock_rw_writing);
     
-    DEBUG_PRINTF("Writer exiting")
+    DEBUG_PRINTF("Writer exiting, Free this callback using sbuffer_remove_callback() or \
+                    sbuffer_free()!")
+
     pthread_exit(0);
     
 }
 
 
 /************************************************** _USER_FUNCTIONS_ ***************************************************************/
+#define _data_buffer_ ((&elem)->arguments)->data_buffer
 /** Adds the callback function to the reader/writer thread operating on the sbuffer.
  * TO_DO: Make adding callbacks thread safe.
  * \param buffer
@@ -464,17 +474,16 @@ void *writer_thread(void *buffer) {
  * \param type  
 */
 int sbuffer_add_callback(sbuffer_t* buffer, cb_func function, cb_args_t* args, int rw) {
-    if (buffer == NULL || function == NULL || args == NULL || (args)->data != NULL) return SBUFFER_FAILURE;
-    
-    
-
+    if (buffer == NULL || function == NULL || args == NULL || (args)->data_buffer != NULL) return SBUFFER_FAILURE;
     
     //printf("sizeof(pthread_mutex_t): %d\n", sizeof(pthread_mutex_t));
 
     sbuff_callback_t elem = {.function = function, .arguments = args, .exec_lock = NULL};
-    (&elem)->arguments->data = (sensor_data_t*) malloc(sizeof(sensor_data_t));
-    ERROR_IF((&elem)->arguments->data == NULL, ERR_MALLOC("sensor_data"));
-
+    _data_buffer_ = calloc(1, sizeof(data_buffer_t));
+    ERROR_IF(_data_buffer_ == NULL, ERR_MALLOC("data_buffer_t in writer thread"));
+    _data_buffer_->size = DATA_BUFFER_SIZE;
+    *(_data_buffer_->head) = calloc((_data_buffer_->size)+1, sizeof(sensor_data_t));
+    ERROR_IF(*(_data_buffer_->head) == NULL, ERR_MALLOC("sensor_data* x SIZE_DATA_BUFFER in writer thread"));
     (&elem)->exec_lock = (pthread_mutex_t*) malloc(sizeof(pthread_mutex_t));
     ERROR_IF((&elem)->exec_lock == NULL, ERR_MALLOC("mutex"));
     ERROR_IF(pthread_mutex_init((&elem)->exec_lock , NULL) == -1, ERR_MUTEX_INIT);
@@ -527,7 +536,9 @@ void element_free(void ** element) {
     else {
         pthread_mutex_destroy(((sbuff_callback_t*)(*element))->exec_lock);
         free(((sbuff_callback_t*)(*element))->exec_lock);
-        free(((sbuff_callback_t*)(*element))->arguments->data);
+        free(*(((sbuff_callback_t*)(*element))->arguments->data_buffer->head));
+        free(((sbuff_callback_t*)(*element))->arguments->data_buffer);
+        ((sbuff_callback_t*)(*element))->arguments->data_buffer = NULL;
         free(*element);
         *element = NULL;
     }
