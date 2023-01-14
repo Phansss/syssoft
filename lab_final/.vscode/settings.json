@@ -12,6 +12,7 @@
         "callbacks.h": "c",
         "sensor_db.h": "c",
         "main_debug.h": "c",
-        "type_traits": "c"
+        "type_traits": "c",
+        "time.h": "c"
     }
 }

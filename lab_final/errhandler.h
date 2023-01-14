@@ -3,6 +3,7 @@
 #include <sys/types.h> 
 #include <sys/syscall.h>
 #include <unistd.h>
+#include "config.h"
 
 #define ERR_SEMAPHORE_INIT "Error during semaphore initialization"
 #define ERR_BARRIER_INIT "Error during barrier initialization" 
@@ -10,12 +11,6 @@
 #define ERR_MUTEX_INIT "Error during mutex initialization"
 #define ERR_MALLOC(type) "Not enough heap memory available for " #type 
 
-
-#ifdef ERROR_NO_EXIT                                                  
-#define ERROR_EXIT break                          
-#else
-#define ERROR_EXIT exit(500)
-#endif
 
 #define ERROR_IF(...) _ERROR_IF_(__VA_ARGS__, " ");   
 #define _ERROR_IF_(cond,fmt,...) 									                                                                 \

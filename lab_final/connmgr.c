@@ -252,8 +252,8 @@ int myconn_remove_client(my_connection_t* connection, my_client_t* client) {
 int myconn_get_rx_data(my_connection_t* connection, connmgr_rx_data_t** rx_data_ptr) {
     ERROR_IF(connection == NULL, "param 'connection' is NULL!");
     if (rx_data_ptr == NULL) {ERROR_IF(rx_data_ptr == NULL, "param 'rx_data' is NULL!"); exit(1);}
-    if (!(*rx_data_ptr == NULL))(*rx_data_ptr) = (connection->rx_data);
-    else ERROR_IF(1, "param 'rx_data' is NULL!");
+    if ((*rx_data_ptr == NULL))(*rx_data_ptr) = (connection->rx_data);
+    else ERROR_IF(1, "param 'rx_data' is not NULL!");
     return 0;
 }
 

@@ -12,18 +12,18 @@
 #define SBUFFER_NO_DATA 1
 
 #define SBUFFER_CBW_EXIT -1
+
 #define SBUFFER_READER 0
 #define SBUFFER_WRITER 1
-
 
 #define DATA_PROCESS_SUCCESS 0
 #define DATA_PROCESS_ERROR 1
 
 
-#ifndef SBUFF_READER_THREADS
+#ifndef SBUFFER_READER_THREADS
 #error "number of reader threads not defined"
 #endif
-#ifndef SBUFF_WRITER_THREADS
+#ifndef SBUFFER_WRITER_THREADS
 #error "number of writer threads not defined"
 #endif
 
@@ -44,11 +44,29 @@
 #define PTH_join( a, b ) \
     (pthread_join( (a), (b) ) != 0 ? abort() : (void)0 )
 
-#define NO_OF_READERS 2
-#define DATA_BUFFER_SIZE 5
 
 
+#ifndef SBUFFER_SETTINGS_SET
+#ifndef SBUFFER_CB_MASK
+#define SBUFFER_DEFINE_CB_MASK long int cb_mask
+#define SBUFFER_CB_MASK cb_mask
+#endif
+#define SBUFFER_RW_BUFFER_SIZE 5
+#define SBUFFER_DEFINE_CB_FLAGS short int cb_flags = 0b1111;
 
+#define SBUFFER_GET_CB_MASK(idx)                                                                           \
+    do{short int SBUFFER_CB_MASK = 0;                                                                              \
+        if (idx == 1) SBUFFER_CB_MASK = 0b1;   /*1*/                                                               \
+        if (idx == 2) SBUFFER_CB_MASK = 0b10;  /*2*/                                                               \
+        if (idx == 3) SBUFFER_CB_MASK = 0b11;  /*3*/                                                               \
+        if (idx == 4) SBUFFER_CB_MASK = 0b100; /*4*/                                                               \
+    }while(0)                           //add more if you need more than 4 readers
+#else
+#ifndef SBUFFER_CB_MASK
+#define DEFINE_SBUFFER_CB_MASK long int cb_mask
+#define SBUFFER_CB_MASK cb_mask
+#endif
+#endif
 
 typedef struct sbuffer sbuffer_t;
 

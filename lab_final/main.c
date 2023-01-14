@@ -31,7 +31,7 @@
 
 
 /*___________________Sbuffer Writers -> read from resources_______________ */
-typedef struct connmgr_attr {
+typedef struct connmgr_args {
     data_buffer_t* sbuff_data_buffer;
     my_connection_t* connection;
 } connmgr_attr_t;
@@ -48,7 +48,7 @@ int read_file_init(read_file_t** attr);
 int read_file_cleanup(read_file_t** attr);
 
 /*___________________Sbuffer Readers -> write to resources_______________ */
-typedef struct write_file {
+typedef struct write_file_args {
   data_buffer_t* sbuff_data_buffer; // ! must be present !
   FILE* data_out;
 } write_file_t;
@@ -57,8 +57,7 @@ int write_file_init(write_file_t** attr);
 int write_file_cleanup(write_file_t** attr);
 
 
-
-typedef struct dbinsert {
+typedef struct dbinsert_args {
     data_buffer_t* sbuff_data_buffer; // ! must be present !
     DBCONN *conn;
 } dbinsert_t;
@@ -66,7 +65,7 @@ int dbinsert(cb_args_t*data_arg);
 int dbinsert_init(dbinsert_t** attr, char clear_up_flag);
 int dbinsert_cleanup(dbinsert_t** attr);
 
-typedef struct datamgr_process {
+typedef struct datamgr_process_args {
     data_buffer_t* sbuff_data_buffer; // ! must be present !
 } datamgr_process_t;
 int datamgr_process(cb_args_t* data_arg);
@@ -77,21 +76,6 @@ int datamgr_cleanup(datamgr_process_t** attr);
 dplist_t* sensor_room_list;
 int port_number = PORT;
 
-int write_file(cb_args_t* cb_args) {
-    //PRINTF_MAIN("Entered write_file callback");
-    fprintf(((write_file_t*)cb_args)->data_out,
-              "%hd %lf %ld\n",
-              (((write_file_t*)cb_args)->sbuff_data_buffer->head)->id,
-              (((write_file_t*)cb_args)->sbuff_data_buffer->head)->value, 
-              (((write_file_t*)cb_args)->sbuff_data_buffer->head)->ts);
-    //printf("Written data: sensor id = %" PRIu16 " - temperature = %g - timestamp = %ld\n",
-    //        ((write_file_t*)cb_args)->data->id, 
-    //        ((write_file_t*)cb_args)->data->value,
-    //        (long int) ((write_file_t*)attr)->data->ts);
-    return DATA_PROCESS_SUCCESS;  
-}
-
-
 int main() {
   //int child = fork();
   //SYSCALL_ERROR(child);
@@ -99,49 +83,50 @@ int main() {
     
   //} 
   //else {
-    PRINTF_MAIN("Started");
     pthread_t writer;
     pthread_t reader1;
-    //pthread_t reader2;
+    pthread_t reader2;
     sbuffer_t* buffer;
+    if (sbuffer_init(&buffer, SBUFFER_READER_THREADS, SBUFFER_WRITER_THREADS) != SBUFFER_SUCCESS) exit(1);
 
-    //initialize sbuffer
-
-    if (sbuffer_init(&buffer, SBUFF_READER_THREADS, SBUFF_WRITER_THREADS) != SBUFFER_SUCCESS) exit(1);
-
-    //initialize resources
+    //application
     connmgr_attr_t* connmgr_args;
     connmgr_init(&connmgr_args);
     dbinsert_t* dbinsert_args;
     dbinsert_init(&dbinsert_args, 1);
     datamgr_process_t* datamgr_process_args;
     datamgr_init(&datamgr_process_args);
-    write_file_t* write_file_args;
-    write_file_init(&write_file_args);
+
+    //test resources
+    write_file_t* write_file_args1;
+    write_file_init(&write_file_args1);
+    write_file_t* write_file_args2;
+    write_file_init(&write_file_args2);
     read_file_t* read_file_args;
     read_file_init(&read_file_args);
 
     PRINTF_MAIN("Adding callback functions to the sbuffer");
-    sbuffer_add_callback(buffer, read_file, (cb_args_t*)read_file_args, 1);
-    sbuffer_add_callback(buffer, write_file, (cb_args_t*)write_file_args, 0);
-    //sbuffer_add_callback(buffer, datamgr_process, (cb_args_t*)write_file_args, 0);
-    
+    sbuffer_add_callback(buffer, connmgr_poll, (cb_args_t*)connmgr_args, SBUFFER_WRITER);
+    sbuffer_add_callback(buffer, dbinsert, (cb_args_t*)dbinsert_args, SBUFFER_READER);
+    sbuffer_add_callback(buffer, datamgr_process, (cb_args_t*)datamgr_process_args, SBUFFER_READER);
+    //sleep(1);
+    //exit(1);
     PRINTF_MAIN("Initializing Threads");
     PTH_create(&writer, NULL, writer_thread, buffer); 
     PTH_create(&reader1, NULL, reader_thread, buffer); 
-    //PTH_create(&reader2, NULL, reader_thread, buffer); 
-  
+    PTH_create(&reader2, NULL, reader_thread, buffer); 
+    
     pthread_join(writer, NULL);
     pthread_join(reader1, NULL);
-    //pthread_join(reader2, NULL);
+    pthread_join(reader2, NULL);
 
     // Close resources
     connmgr_cleanup(&connmgr_args);
     dbinsert_cleanup(&dbinsert_args);
     datamgr_cleanup(&datamgr_process_args);
-
     read_file_cleanup(&read_file_args);
-    write_file_cleanup(&write_file_args);
+    write_file_cleanup(&write_file_args1);
+    write_file_cleanup(&write_file_args2);
   
     sbuffer_free(&buffer);
   //}  
@@ -158,10 +143,15 @@ int datamgr_process(cb_args_t* data_arg) {
 }
 
 int datamgr_init(datamgr_process_t** attr) {
+    PRINTF_MAIN("Creating dplist");
+    *attr = calloc(1, sizeof(datamgr_process_t));
+    ERROR_IF(*attr == NULL, ERR_MALLOC("datamgr_process_t"));
     sensor_room_list = dpl_create(my_sensor_copy, my_sensor_free, my_sensor_compare, my_sensor_print);
     FILE* f_sensor_map = fopen("room_sensor.map", "r");
+    PRINTF_MAIN("Parsing sensor map...");
     parse_sensor_map(f_sensor_map, &sensor_room_list);
     fclose(f_sensor_map);
+    
     return 0;
 }
 
@@ -170,8 +160,6 @@ int datamgr_cleanup(datamgr_process_t** attr) {
     (*attr) = NULL;
     return 0;
 }
-
-
 
 
 int dbinsert(cb_args_t* data_arg) {
@@ -202,9 +190,9 @@ int dbinsert_cleanup(dbinsert_t** attr) {
     return 0;
 }
 
-
-
-int connmgr_poll(cb_args_t* data_arg) {       connmgr_rx_data_t* rx_data_array;
+int connmgr_poll(cb_args_t* data_arg) {       
+    connmgr_rx_data_t* rx_data_array = NULL;
+    data_arg->data_buffer->count_received = 0;
     if(myconn_listen(((connmgr_attr_t*)data_arg)->connection) == CONNMGR_CLOSE) return DATA_PROCESS_ERROR;
     myconn_get_rx_data(((connmgr_attr_t*)data_arg)->connection, &rx_data_array);
     if(rx_data_array->buff_size > ((connmgr_attr_t*)data_arg)->sbuff_data_buffer->size) {
@@ -223,6 +211,7 @@ int connmgr_poll(cb_args_t* data_arg) {       connmgr_rx_data_t* rx_data_array;
         }
     }
     data_arg->data_buffer->count_received = thread_rx_buffer_idx;
+    PRINTF_MAIN("Total received: %d", data_arg->data_buffer->count_received);
     return DATA_PROCESS_SUCCESS;        
 }
 
@@ -241,10 +230,7 @@ int connmgr_cleanup(connmgr_attr_t** attr){
 }
 
 
-
-
 #define _sbuff_data_buffer_head_ ((read_file_t*)data_arg)->sbuff_data_buffer->head
-
 int read_file(cb_args_t* data_arg) {
     if (fread(&(((_sbuff_data_buffer_head_)[0]).id), sizeof(sensor_id_t), 1, 
         ((read_file_t*)data_arg)->data_in) != 1){ ((read_file_t*)data_arg)->sbuff_data_buffer->count_received = 0; return DATA_PROCESS_ERROR;}
@@ -279,7 +265,19 @@ int read_file_cleanup(read_file_t** attr) {
 }
 
 
-
+int write_file(cb_args_t* cb_args) {
+    //PRINTF_MAIN("Entered write_file callback");
+    fprintf(((write_file_t*)cb_args)->data_out,
+              "%hd %lf %ld\n",
+              (((write_file_t*)cb_args)->sbuff_data_buffer->head)->id,
+              (((write_file_t*)cb_args)->sbuff_data_buffer->head)->value, 
+              (((write_file_t*)cb_args)->sbuff_data_buffer->head)->ts);
+    //printf("Written data: sensor id = %" PRIu16 " - temperature = %g - timestamp = %ld\n",
+    //        ((write_file_t*)cb_args)->data->id, 
+    //        ((write_file_t*)cb_args)->data->value,
+    //        (long int) ((write_file_t*)attr)->data->ts);
+    return DATA_PROCESS_SUCCESS;  
+}
 
 int write_file_init(write_file_t** attr) {
     (*attr) = (write_file_t*) calloc(1, sizeof(write_file_t));

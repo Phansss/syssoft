@@ -28,6 +28,9 @@ typedef struct my_sensor my_sensor_t;
 
 extern dplist_t* sensor_room_list;
 
+#define DATAMGR_SUCCESS 0
+#define DATAMGR_FAILURE 1
+
 /*****************************************************LAB METHODS**************************************************************/
 
 /**
@@ -95,7 +98,7 @@ void process_sensor_data(sensor_data_t* data);
 * \param ravg the running
 * \return void
 */
-void sensor_create(my_sensor_t** sensor, sensor_id_t sid, uint16_t rid);
+int sensor_create(my_sensor_t** sensor, sensor_id_t sid, uint16_t rid);
 
 /** Searches for sensor with sid in the given sensor_dplist
  * \param sensor_dplist The list in which to search for the sensor
@@ -111,7 +114,7 @@ my_sensor_t* sensor_search(dplist_t* sensor_dplist, sensor_id_t sid);
  * \param value the value to push to the sensor buffer
  * \param ts last modified timestamp
 */
-my_sensor_t* sensor_update(my_sensor_t* sensor, sensor_value_t value, sensor_ts_t ts);
+int sensor_update(my_sensor_t* sensor, sensor_value_t value, sensor_ts_t ts);
 
 /* void sensor_print(my_sensor_t* sensor); */
 
@@ -119,13 +122,13 @@ my_sensor_t* sensor_update(my_sensor_t* sensor, sensor_value_t value, sensor_ts_
  * \param sensor pointer to the sensor
  * \param value sensor value to be pushed
 */
-void sensor_push_value(my_sensor_t* sensor, sensor_value_t value);
+int sensor_push_value(my_sensor_t* sensor, sensor_value_t value);
 
 /** Updates the running average of the sensor using the running values of the sensor 
  * \param sensor pointer to the sensor to be updated.
  * \return void
 */
-void sensor_update_ravg(my_sensor_t* sensor);
+int sensor_update_ravg(my_sensor_t* sensor);
 
 
 void * my_sensor_copy(void * element);

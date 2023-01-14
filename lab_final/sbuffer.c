@@ -26,8 +26,6 @@
 #include "lib/dplist.h"
 #include "main_debug.h"
 
-int test = 0;
-
 int count;
 void *reader_cleanup(sbuffer_t* buffer);
 void * my_callback_copy(void * element);
@@ -213,55 +211,70 @@ int sbuffer_remove(sbuffer_t *buffer) {
     return SBUFFER_SUCCESS;
 }
 
+int r_execute(sbuffer_t* buffer, sbuffer_node_t* locked_sbuff_node) {
+    // keep looping over the callbacks until all functions are executed by this thread
+    const int exec_count = dpl_size(buffer->cbs_r);
+    int exec_left = exec_count;
+    int exec_flags[exec_count]; 
+    for (int ef = 0; ef<exec_count; ef++) {
+        exec_flags[ef] = 0;
+    } 
+    sbuff_callback_t *dummy_my_callback;
+
+    while(exec_left != 0) { 
+        for (int ef = 0; ef < exec_count; ef++) { 
+            if (exec_flags[ef] != 1) { //polling! -> bad, better implementation possible!
+                dummy_my_callback = dpl_get_element_at_index(buffer->cbs_r, ef);
+                DEBUG_GET_CALLBACK_FUNCTION_NAME(dummy_my_callback->function);           // THESE TWO GO ALWAYS TOGETHER 
+                //PRINTF_SBUFFER("attempting callback function: %s", f_name);
+                if (pthread_mutex_trylock(dummy_my_callback->exec_lock) == 0) {
+                    //sleep(1) ;
+                    *(dummy_my_callback->arguments->data_buffer->head) = locked_sbuff_node->data;
+                    (dummy_my_callback->function)(dummy_my_callback->arguments); // execute reader callback
+                    exec_flags[ef] = 1;
+                    exec_left--;
+                    pthread_mutex_unlock(dummy_my_callback->exec_lock);
+                    //PRINTF_SBUFFER("finished callback function: %s", f_name);
+
+                } 
+                else {
+                //PRINTF_SBUFFER("attempting next callback function");                
+                }
+                DEBUG_FREE_CALLBACK_FUNCTION_NAME;                                        // THESE TWO GO ALWAYS TOGETHER 
+            } 
+        }
+        if (exec_left == 0) return SBUFFER_SUCCESS;
+        //PRINTF_SBUFFER("Not finished yet, %d functions to go ", exec_left);
+        sched_yield();
+    }
+    return SBUFFER_FAILURE;
+}
+
 /** Lock each reader on a sbuffer node and execute the reader callback functions.
  * 
 */
-
-int rb_lock_execute(sbuffer_t* buffer) {
-    if (buffer == NULL) return SBUFFER_FAILURE; // buffer must be initialized
-    int no_r_callbacks = dpl_size(buffer->cbs_r);
-    int check_exec_arr[no_r_callbacks];
+int r_lock_node(sbuffer_t* buffer) {
+    PRINTF_SBUFFER("___START___\n");
     int node_lock;
-    for (int m; m<no_r_callbacks; m++) {
-        check_exec_arr[m] = 0;
-    } 
-    int count_r_callback_exec = no_r_callbacks; // logistics var
-    sbuff_callback_t *dummy_callback_t;
     sbuffer_node_t *dummy_sbuff_node;
-    dummy_sbuff_node = buffer->head; // start looping through the running buffer at the start of the sbuffer
-    for (int idx_la= 0; idx_la<buffer->no_readers; idx_la++) { //search lock array for free buff node
-        //PRINTF_SBUFFER("Reader trying lock %d of nodelock_array",i);
-        node_lock = pthread_mutex_trylock((buffer->nodelock_array)[dummy_sbuff_node->rb_index]);
-        switch (node_lock) { //reader thread bound to node in ready sbuffer. Loop through loopback functions.
+    printf("buffer->head addr: %p\n",dummy_sbuff_node = buffer->head);
+    //sleep(0.5);
+    dummy_sbuff_node = buffer->head;                                                               // start looping through the running buffer at the start of the sbuffer
+    for (int idx_la= 0; idx_la<buffer->no_readers; idx_la++) {                                    //search lock array for free buff node
+        //PRINTF_SBUFFER("Reader trying lock %d of nodelock_array",idx_la);
+        node_lock = pthread_mutex_trylock((buffer->nodelock_array)[dummy_sbuff_node->rb_index]); 
+        switch (node_lock) {                                                                      //reader thread bound to node in ready sbuffer. Loop through loopback functions.
             case 0:
-                //PRINTF_SBUFFER("Reader locked on lock %d of nodelock_array", idx_la);
-                while(count_r_callback_exec != 0) {                 // keep looping over the callbacks until all functions are executed by this thread
-                    for (int j = 0; j < no_r_callbacks; j++) {      //
-                        dummy_callback_t = dpl_get_element_at_index(buffer->cbs_r, j);
-                        if (check_exec_arr[j] != 1){                //if function not yet executed
-                            if(pthread_mutex_trylock(dummy_callback_t->exec_lock) == 0) { //if lock acquired
-                                *(dummy_callback_t->arguments->data_buffer->head) = dummy_sbuff_node->data;
-                                (dummy_callback_t->function)(dummy_callback_t->arguments); // execute reader callback
-                                check_exec_arr[j] = 1;
-                                count_r_callback_exec--;
-                                //count++;
-                                pthread_mutex_unlock(dummy_callback_t->exec_lock);
-                                //GET_CALLBACK_FUNCTION_NAME(dummy_callback_t->function); // THESE TWO GO ALWAYS TOGETHER 
-                                //PRINTF_SBUFFER("Reader executed callback function: %s", f_name); 
-                                //FREE_CALLBACK_FUNCTION_NAME;                            // THESE TWO GO ALWAYS TOGETHER
-                            }
-                        }
-                    }
-                }
+                PRINTF_SBUFFER("Reader succeeded lockarray[%d]", idx_la);
+                ERROR_IF(r_execute(buffer, dummy_sbuff_node) == SBUFFER_FAILURE, "r_execute failure");                                         
                 pthread_mutex_unlock((buffer->nodelock_array)[dummy_sbuff_node->rb_index]);
-                return SBUFFER_SUCCESS;
-           
-            case (EBUSY) : dummy_sbuff_node = dummy_sbuff_node->next; break;
+                PRINTF_SBUFFER("____END____\n");
+                return SBUFFER_SUCCESS;   
+            case (EBUSY) : dummy_sbuff_node = dummy_sbuff_node->next; /*PRINTF_SBUFFER("Reader failed lockarray[%d]", idx_la)*/; break;
             default      : ERROR_IF(1, "Design error during processing of data"); return SBUFFER_FAILURE;
-        }
+        }            
     }
-    ERROR_IF(1, "Design error during processing of data");
-    return SBUFFER_FAILURE;
+    ERROR_IF(1, "Design error during processing of data"); return SBUFFER_FAILURE;
 }
 
 
@@ -277,15 +290,20 @@ void *reader_thread(void *buffer) {
     while(1) {
         //if (pthread_rwlock_tryrdlock(((sbuffer_t*)buffer)->rwlock_rw_writing) == EBUSY) {
             //PRINTF_SBUFFER("Address of ((sbuffer_t*)buffer)->semaphore_count_nodes_ready :%p", ((sbuffer_t*)buffer)->semaphore_count_nodes_ready)               // writer still busy; lock not acquired.
-            if (sem_trywait(((sbuffer_t*)buffer)->semaphore_count_nodes_ready) == 0) {   
-                //PRINTF_SBUFFER("rb_lock_execute"); 
-                rb_lock_execute((sbuffer_t*)buffer);
+            if (sem_trywait(((sbuffer_t*)buffer)->semaphore_rw_buffercount) == 0) {   
+                //PRINTF_SBUFFER("Reader locking on sync and executing callbacks"); 
+                pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_r_readerssync);
+                
+                ERROR_IF(r_lock_node((sbuffer_t*)buffer) == SBUFFER_FAILURE, "r_lock_node error");
                 //PRINTF_SBUFFER("Reader blocking on barrier 'barier_r_readerssync"); 
                 result = pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_r_readerssync);
+                
                 if (result != PTHREAD_BARRIER_SERIAL_THREAD) sched_yield();
                 else { sbuff_dummy = ((sbuffer_t*)buffer)->head; //look for address of last node in running buffer
                     //end loop when sbuff dummy is at start of new buffer
+                    PRINTF_SBUFFER("Removing buffer...");
                     for (int i = 0; i < ((sbuffer_t*)buffer)->no_readers; i++) {
+                        PRINTF_SBUFFER("Removing node...");
                         sbuff_dummy_prev = sbuff_dummy;
                         sbuff_dummy = sbuff_dummy->next;
                         free(sbuff_dummy_prev);
@@ -293,9 +311,9 @@ void *reader_thread(void *buffer) {
                     //PRINTF_SBUFFER("Address of ((sbuffer_t*)buffer)->head :%p", &(((sbuffer_t*)buffer)->head))   
                     ((sbuffer_t*)buffer)->head = sbuff_dummy;
                 }
-            //PRINTF_SBUFFER("Read %d data points from sbuffer", count); 
-            //PRINTF_SBUFFER("Waiting for removal of previous buffer")
-            pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_r_readerssync);
+                PRINTF_SBUFFER("new head after removal: %p", ((sbuffer_t*)buffer)->head);
+                PRINTF_SBUFFER("Waiting for removal of previous buffer");
+                pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_r_readerssync);
             } else{
                 if (pthread_rwlock_tryrdlock(((sbuffer_t*)buffer)->rwlock_rw_writing) != EBUSY) {
                     pthread_rwlock_unlock(((sbuffer_t*)buffer)->rwlock_rw_writing);
@@ -305,7 +323,6 @@ void *reader_thread(void *buffer) {
         } 
     }     
 
-
 void *reader_cleanup(sbuffer_t* buffer) {
     PRINTF_SBUFFER("Enter reader cleanup");
     pthread_exit(0);
@@ -313,8 +330,6 @@ void *reader_cleanup(sbuffer_t* buffer) {
                 
 /************************************************** _WRITER_THREAD_ ***************************************************************/
 //TO DO: mimplement multiple writer possibility!
-
-
 
 int sbuffer_insert(sbuffer_t *buffer, const sensor_data_t *data) {
     
@@ -343,21 +358,17 @@ int sbuffer_insert(sbuffer_t *buffer, const sensor_data_t *data) {
     sem_post(buffer->semaphore_count_nodes_ready);
     return SBUFFER_SUCCESS;
 }
+
 #define _sbuff_data_buffer_head_ ((cb_args_t*)(cb->arguments))->data_buffer->head
-
 void *writer_thread(void *buffer) {
-
     PRINTF_SBUFFER("Writer thread started");    //sensor_data_t rx_data = {.id = 0, .value = 0, .ts = 0}; used  for multiple, dedicated writers
     int sbuff_count = 0;
     sbuff_callback_t* cb = NULL;
-
     //initialize callback & accompanying data_buffer
     cb = (sbuff_callback_t*)(dpl_get_element_at_index((((sbuffer_t*)buffer)->cbs_w), 0));
     //ERROR_IF(cb == NULL, "No callback for sbuffer writer thread!"); -> cppcheck --> cb == NULL: redundant 
 
-    
     // callback execution
-    PRINTF_SBUFFER("Writer execute callback with");
     while ((cb->function)((cb_args_t*)(cb->arguments)) != DATA_PROCESS_ERROR) {
         for (int i = 1; i <= ((cb_args_t*)(cb->arguments))->data_buffer->count_received; i++) {
             PRINTF_SBUFFER("Writer inserting data in sbuffer: sensor id = %" PRIu16 " - temperature = %g - timestamp = %ld", 
@@ -366,16 +377,16 @@ void *writer_thread(void *buffer) {
                             ((long int)((_sbuff_data_buffer_head_)[i-1]).ts));
             sbuffer_insert(((sbuffer_t*)buffer), &((_sbuff_data_buffer_head_)[i-1]));
             sbuff_count++;
-            if (sbuff_count == (SBUFF_READER_THREADS*SBUFF_WRITE_BUFFER)) break; // buffer until sbuffer contians SBUFF_READER_THREADS + 1 data nodes
+            if (sbuff_count == (SBUFFER_READER_THREADS*SBUFFER_WRITER_THREADS)) break; // buffer until sbuffer contians SBUFFER_READER_THREADS + 1 data nodes
         }
-        if (sbuff_count == (SBUFF_READER_THREADS*SBUFF_WRITE_BUFFER)) break;
+        if (sbuff_count == (SBUFFER_READER_THREADS*SBUFFER_WRITER_THREADS)) {
+            sbuff_count=0; 
+            break;
+        }
     }
-
-
     //ERROR_IF(wr_status == DATA_PROCESS_ERROR, "Error receving data!");
     PRINTF_SBUFFER("Writer buffered %d sbuffer nodes.", sbuffer_size(((sbuffer_t*)buffer)));
     
-    // TO DO:   implement mechanism so that multiple writers can lock the rwlock!
     PRINTF_SBUFFER("Writer lock rwlock 'rwlock_rw_writing'");
     pthread_rwlock_wrlock(((sbuffer_t*)buffer)->rwlock_rw_writing); //SBUFFERED LOCK ON
 
@@ -392,7 +403,6 @@ void *writer_thread(void *buffer) {
             sbuffer_insert(((sbuffer_t*)buffer), &((_sbuff_data_buffer_head_)[i-1]));
             sbuff_count++;
         }
-        if (sbuff_count == (SBUFF_READER_THREADS*SBUFF_WRITE_BUFFER)) break;
     }
     PRINTF_SBUFFER("Writer finished. Wrote %d sbuffer nodes", sbuff_count);
       
@@ -400,13 +410,10 @@ void *writer_thread(void *buffer) {
     PRINTF_SBUFFER("Writer unlocking for buffered cleanup");
     pthread_rwlock_unlock(((sbuffer_t*)buffer)->rwlock_rw_writing);
     
-    PRINTF_SBUFFER("Writer exiting, Free this callback using sbuffer_remove_callback() or \
-                    sbuffer_free()!");
-
+    PRINTF_SBUFFER("Writer exiting");
     pthread_exit(0);
     
 }
-
 
 /************************************************** _USER_FUNCTIONS_ ***************************************************************/
 
@@ -419,28 +426,31 @@ void *writer_thread(void *buffer) {
  * \param type  
 */
 int sbuffer_add_callback(sbuffer_t* buffer, cb_func function, cb_args_t* args, int rw) {
-    if (buffer == NULL || function == NULL || args == NULL || (args)->data_buffer != NULL) return SBUFFER_FAILURE;
+    
+    ERROR_IF((buffer == NULL || function == NULL || args == NULL || (args)->data_buffer != NULL), "invalid arguments: %p %p %p %d", buffer, function, args, rw);
     
     //printf("sizeof(pthread_mutex_t): %d\n", sizeof(pthread_mutex_t));
     
     sbuff_callback_t elem = {.function = function, .arguments = args, .exec_lock = NULL};
     ((&elem)->arguments)->data_buffer = calloc(1, sizeof(data_buffer_t));
     ERROR_IF(((&elem)->arguments)->data_buffer == NULL, ERR_MALLOC("data_buffer_t in writer thread"));
-    ((&elem)->arguments)->data_buffer->size = DATA_BUFFER_SIZE;
+    ((&elem)->arguments)->data_buffer->size = SBUFFER_RW_BUFFER_SIZE;
     ((&elem)->arguments)->data_buffer->count_received = 0;    
     (((&elem)->arguments)->data_buffer->head) = calloc((((&elem)->arguments)->data_buffer->size)+1, sizeof(sensor_data_t));
-    
+    PRINTF_SBUFFER("entering");
     ERROR_IF(((&elem)->arguments)->data_buffer->head == NULL, ERR_MALLOC("sensor_data* x SIZE_DATA_BUFFER in writer thread"));
     (&elem)->exec_lock = (pthread_mutex_t*) malloc(sizeof(pthread_mutex_t));
     ERROR_IF((&elem)->exec_lock == NULL, ERR_MALLOC("mutex"));
     ERROR_IF(pthread_mutex_init((&elem)->exec_lock , NULL) == -1, ERR_MUTEX_INIT);
+    PRINTF_SBUFFER("rw equals: %d", rw);
     switch (rw) {
-        case SBUFFER_READER : dpl_insert_at_index(buffer->cbs_r, &elem, -1, true); break;
-        case SBUFFER_WRITER : dpl_insert_at_index(buffer->cbs_w, &elem, -1, true);break;
+        case SBUFFER_READER : PRINTF_SBUFFER("inserting reader callback"); dpl_insert_at_index(buffer->cbs_r, &elem, -1, true);break;
+        case SBUFFER_WRITER :PRINTF_SBUFFER("inserting writer callback"); dpl_insert_at_index(buffer->cbs_w, &elem, -1, true);break;
         default             : ERROR_IF(1, "non-existing thread type! Only 'r' or 'w' allowed!");
     }
     free((&elem)->exec_lock);
     PRINTF_SBUFFER("size of cbs_r: %d", dpl_size(buffer->cbs_r));
+    PRINTF_SBUFFER("size of cbs_w: %d", dpl_size(buffer->cbs_w));
     return(SBUFFER_SUCCESS);
 }
 

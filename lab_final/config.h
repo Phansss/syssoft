@@ -8,10 +8,23 @@
 #include <stdint.h>
 #include <time.h>
 
-//#define DEBUG_ALL
-#define DEBUG_SBUFFER
-#define DEBUG_MAIN
-#define ERROR_NO_EXIT
+//___________________________________________________ GENERAL APPLICATION SETTINGS ____________________________________________
+#ifndef SET_MAX_TEMP
+#define SET_MAX_TEMP 27
+#endif
+#ifndef SET_MIN_TEMP
+#define SET_MIN_TEMP 14
+#endif
+
+#ifndef TIMEOUT
+#define TIMEOUT 10
+#endif
+
+#ifndef PORT
+#define PORT 5678
+#endif
+                              
+#define ERROR_EXIT exit(500) //define actions to be taken after error detection. 'break' for no action  /              
 
 #ifdef DEBUG_ALL
 #define DEBUG_DPLIST
@@ -21,22 +34,27 @@
 #define DEBUG_SBUFFER
 #define DEBUG_MAIN
 #else
+//#define DEBUG_DPLIST
+//#define DEBUG_SENSOR_DB
+//#define DEBUG_DATAMGR
+//#define DEBUG_CONNMGR
+#define DEBUG_SBUFFER
+#define DEBUG_MAIN
 #endif
-
-#define SBUFF_READER_THREADS 1
-#define SBUFF_WRITER_THREADS 1
-#define SBUFF_WRITE_BUFFER 3
-
-#ifndef SET_MAX_TEMP
-#define SET_MAX_TEMP 27
-#endif
-#ifndef SET_MIN_TEMP
-#define SET_MIN_TEMP 14
-#endif
+//---------------------------------------------------------------------------------------------------------------------------------------
 
 
-//#define TIMEOUT 10
-#define PORT 5678
+//__________________________________________________________ SBUFFER SETTINGS ___________________________________________________________
+
+//__THREAD SETTINGS
+#define SBUFFER_READER_THREADS 2 // Number of reader threads
+#define SBUFFER_WRITER_THREADS 1 // Number of sbuffer writer threads
+#define SBUFFER_RW_BUFFER_SIZE 5 // Number of data elements processed in one (sbuff_writer) callback function.
+                                                             //add more if you need more than 4 reader callbacks
+#define SBUFFER_SETTINGS_SET    //if not defined, use default settings in sbuffer.h
+//________________________________________________________________________________________________________________________________________
+
+
 
 
 //#include <stdint.h>

@@ -104,37 +104,40 @@ int datamgr_get_total_sensors() {
 
 
 /**********************************************************_HELPER FUNCTIONS_*********************************************************************/
-void sensor_create(my_sensor_t** sensor, sensor_id_t sid, uint16_t rid) {
-    assert(*sensor==NULL);
+int sensor_create(my_sensor_t** sensor, sensor_id_t sid, uint16_t rid) {
+    ERROR_IF((*sensor) != NULL, "Sensor pointer not null!"); if ((*sensor) != NULL) {return DATAMGR_FAILURE;};
     *sensor = malloc(sizeof(my_sensor_t));
+    ERROR_IF((*sensor) == NULL, ERR_MALLOC("my_sensor_t")); if (*sensor==NULL) {return DATAMGR_FAILURE;};
     (*sensor)->sid = sid;
     (*sensor)->rid = rid;  
-    (*sensor)->ravg = 0;    //initialize running average to 0
+    (*sensor)->ravg = 0;
     //time(&((*sensor)->lm)); //initialize last modified to current time
-    (*sensor)->lm = 0;      //initialize last modified to earliest possible time.
-    (*sensor)->rvalues_valid = 0; 
-}
+    (*sensor)->lm = 0;
+    (*sensor)->rvalues_valid = 0;
+    return DATAMGR_SUCCESS;
+;}
 
 my_sensor_t* sensor_search(dplist_t* sensor_dplist, sensor_id_t sid) {
+    ERROR_IF(sensor_dplist == NULL, "Invalid function argument"); if (sensor_dplist==NULL) {return NULL;};
     my_sensor_t dummy;
     dummy.sid = sid; 
     int idx = dpl_get_index_of_element(sensor_dplist, &dummy);
-    if (idx == -1) return NULL;
+    ERROR_IF(idx == -1, "sensor with sid not found in the list!"); if (idx==-1) return NULL;
     my_sensor_t* sensor = dpl_get_element_at_index(sensor_dplist, idx);
-    if (sensor != NULL) {
-        return sensor;
-    }
-    return NULL;      
+    ERROR_IF(sensor == NULL, "sensor with idx %d not found in the list!", idx); if (sensor==NULL) return NULL;
+    return sensor;     
 }
 
-my_sensor_t* sensor_update(my_sensor_t* sensor, sensor_value_t value, sensor_ts_t ts) {
+int sensor_update(my_sensor_t* sensor, sensor_value_t value, sensor_ts_t ts) {
+    ERROR_IF(sensor == NULL, "Invalid function argument"); if (sensor==NULL) {return DATAMGR_FAILURE;};
     sensor_push_value(sensor, value);
     sensor_update_ravg(sensor);
     sensor->lm = ts;
-    return sensor;
+    return DATAMGR_SUCCESS;
 }
 
-void sensor_print(my_sensor_t* sensor) {
+int sensor_print(my_sensor_t* sensor) {
+    ERROR_IF(sensor == NULL, "Invalid function argument"); if (sensor==NULL) {return DATAMGR_FAILURE;};
     char buff[25];
     struct tm * timeinfo;
     timeinfo = localtime(&(sensor->lm));
@@ -149,17 +152,21 @@ void sensor_print(my_sensor_t* sensor) {
         printf("%2.2lf, ", (sensor->rvalues)[i]);
     }
     printf("%2.2lf]\n", (sensor->rvalues)[RUN_AVG_LENGTH-1]);
+    return DATAMGR_SUCCESS;
 }
 
-void sensor_push_value(my_sensor_t* sensor, sensor_value_t value) {
+int sensor_push_value(my_sensor_t* sensor, sensor_value_t value) {
+    ERROR_IF(sensor == NULL, "Invalid function argument"); if (sensor==NULL) {return DATAMGR_FAILURE;};
     int i=0;
     for (i=0; i<(RUN_AVG_LENGTH-1); i++) {              //
         (sensor->rvalues)[i] = (sensor->rvalues)[i+1];  // Running right-to-left FIFO buffer
     }                                                   //
     (sensor->rvalues)[RUN_AVG_LENGTH-1] = value;        //
+    return DATAMGR_SUCCESS;
 }
 
-void sensor_update_ravg(my_sensor_t* sensor) {
+int sensor_update_ravg(my_sensor_t* sensor) {
+    ERROR_IF(sensor == NULL, "Invalid function argument"); if (sensor==NULL) {return DATAMGR_FAILURE;};
     sensor_value_t sum=0;
     int i=0;
     for (i=0; i<(RUN_AVG_LENGTH); i++) { 
@@ -172,6 +179,7 @@ void sensor_update_ravg(my_sensor_t* sensor) {
     else {
         sensor->ravg = sum/RUN_AVG_LENGTH;
     }
+    return DATAMGR_SUCCESS;
 }
 
 
