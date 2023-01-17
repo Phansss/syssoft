@@ -283,7 +283,7 @@ void *reader_thread(void *buffer) {
     pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_rw_startreaders);         
     PRINTF_SBUFFER("Reader starts reading");
     while(1) {
-            if (sem_trywait(((sbuffer_t*)buffer)->semaphore_rw_buffercount) == 0) {   
+            if (sem_wait(((sbuffer_t*)buffer)->semaphore_rw_buffercount) == 0) {   
                 PRINTF_SBUFFER("Reader thread syncing before lock and execute"); 
                 result = pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_r_readerssync);
                 if(result != PTHREAD_BARRIER_SERIAL_THREAD) (sem_post(((sbuffer_t*)buffer)->semaphore_rw_buffercount));
