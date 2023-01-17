@@ -178,7 +178,6 @@ int dbinsert_init(dbinsert_t** attr, char clear_up_flag) {
     (*attr) = (dbinsert_t*) calloc(1, sizeof(dbinsert_t));
     ERROR_IF((*attr) == NULL, ERR_MALLOC("dbinsert_t"));
     (*attr)->conn = init_connection(clear_up_flag);
-    printf("Initiating connection...\n");
     return 0;
 }
 
@@ -201,9 +200,9 @@ int connmgr_poll(cb_args_t* data_arg) {
     int thread_rx_buffer_idx = 0;
     for (int i = 0; i < rx_data_array->buff_size; i++) {
         if((rx_data_array->pollrx_buffer_flag)[i] == true) {
-            //printf("sensor id = %" PRIu16 " - temperature = %lf - timestamp = %ld\n", (&((rx_data_array->pollrx_buffer)[i]))->id, 
-            //                                                                         (&((rx_data_array->pollrx_buffer)[i]))->value, 
-            //                                                                         (&((rx_data_array->pollrx_buffer)[i]))->ts);
+            PRINTF_MAIN("Passing data from connnmgr to sbuffer: sensor id = %" PRIu16 " - temperature = %lf - timestamp = %ld", (&((rx_data_array->pollrx_buffer)[i]))->id, 
+                                                                                     (&((rx_data_array->pollrx_buffer)[i]))->value, 
+                                                                                     (&((rx_data_array->pollrx_buffer)[i]))->ts);
             (data_arg->data_buffer->head)[thread_rx_buffer_idx].id = (&((rx_data_array->pollrx_buffer)[i]))->id;
             (data_arg->data_buffer->head)[thread_rx_buffer_idx].value = (&((rx_data_array->pollrx_buffer)[i]))->value;
             (data_arg->data_buffer->head)[thread_rx_buffer_idx].ts = (&((rx_data_array->pollrx_buffer)[i]))->ts;
@@ -211,7 +210,6 @@ int connmgr_poll(cb_args_t* data_arg) {
         }
     }
     data_arg->data_buffer->count_received = thread_rx_buffer_idx;
-    PRINTF_MAIN("Total received: %d", data_arg->data_buffer->count_received);
     return DATA_PROCESS_SUCCESS;        
 }
 

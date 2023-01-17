@@ -24,7 +24,7 @@
 #define PORT 5678
 #endif
                               
-#define ERROR_EXIT exit(500) //define actions to be taken after error detection. 'break' for no action  /              
+#define ERROR_EXIT break //define actions to be taken after error detection. 'break' for no action  /              
 
 #ifdef DEBUG_ALL
 #define DEBUG_DPLIST
@@ -39,7 +39,7 @@
 //#define DEBUG_DATAMGR
 //#define DEBUG_CONNMGR
 #define DEBUG_SBUFFER
-#define DEBUG_MAIN
+//#define DEBUG_MAIN
 #endif
 //---------------------------------------------------------------------------------------------------------------------------------------
 

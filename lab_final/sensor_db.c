@@ -18,7 +18,7 @@
  * \return the connection for success, NULL if an error occurs
  */
 DBCONN *init_connection(char clear_up_flag) {
-    printf("Initiating connection...\n");
+    PRINTF_SENSOR_DB("Initiating connection...\n");
     sqlite3 *db;
     char *err_msg = 0;
     char* query_reset_table = NULL;

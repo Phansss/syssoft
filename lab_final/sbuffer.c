@@ -223,28 +223,28 @@ int r_execute(sbuffer_t* buffer, sbuffer_node_t* locked_sbuff_node) {
 
     while(exec_left != 0) { 
         for (int ef = 0; ef < exec_count; ef++) { 
-            if (exec_flags[ef] != 1) { //polling! -> bad, better implementation possible!
+            if (exec_flags[ef] != 1) {                                                   //polling! -> bad, better implementation possible!
                 dummy_my_callback = dpl_get_element_at_index(buffer->cbs_r, ef);
                 DEBUG_GET_CALLBACK_FUNCTION_NAME(dummy_my_callback->function);           // THESE TWO GO ALWAYS TOGETHER 
-                //PRINTF_SBUFFER("attempting callback function: %s", f_name);
+                //PRINTF_SBUFFER("Reader thread attempting callback function: %s", f_name);
                 if (pthread_mutex_trylock(dummy_my_callback->exec_lock) == 0) {
                     //sleep(1) ;
                     *(dummy_my_callback->arguments->data_buffer->head) = locked_sbuff_node->data;
-                    (dummy_my_callback->function)(dummy_my_callback->arguments); // execute reader callback
+                    (dummy_my_callback->function)(dummy_my_callback->arguments); 
                     exec_flags[ef] = 1;
                     exec_left--;
                     pthread_mutex_unlock(dummy_my_callback->exec_lock);
-                    //PRINTF_SBUFFER("finished callback function: %s", f_name);
+                    PRINTF_SBUFFER("Reader thread finished callback function: %s", f_name);
 
                 } 
                 else {
-                //PRINTF_SBUFFER("attempting next callback function");                
+                //PRINTF_SBUFFER("Reader thread attempting next callback function");                
                 }
                 DEBUG_FREE_CALLBACK_FUNCTION_NAME;                                        // THESE TWO GO ALWAYS TOGETHER 
             } 
         }
         if (exec_left == 0) return SBUFFER_SUCCESS;
-        //PRINTF_SBUFFER("Not finished yet, %d functions to go ", exec_left);
+        //PRINTF_SBUFFER("Reader thread not finished yet, %d functions to go ", exec_left);
         sched_yield();
     }
     return SBUFFER_FAILURE;
@@ -254,21 +254,17 @@ int r_execute(sbuffer_t* buffer, sbuffer_node_t* locked_sbuff_node) {
  * 
 */
 int r_lock_node(sbuffer_t* buffer) {
-    PRINTF_SBUFFER("___START___\n");
     int node_lock;
     sbuffer_node_t *dummy_sbuff_node;
-    printf("buffer->head addr: %p\n",dummy_sbuff_node = buffer->head);
-    //sleep(0.5);
     dummy_sbuff_node = buffer->head;                                                               // start looping through the running buffer at the start of the sbuffer
     for (int idx_la= 0; idx_la<buffer->no_readers; idx_la++) {                                    //search lock array for free buff node
-        //PRINTF_SBUFFER("Reader trying lock %d of nodelock_array",idx_la);
+        PRINTF_SBUFFER("Reader trying lock %d of nodelock_array",idx_la);
         node_lock = pthread_mutex_trylock((buffer->nodelock_array)[dummy_sbuff_node->rb_index]); 
         switch (node_lock) {                                                                      //reader thread bound to node in ready sbuffer. Loop through loopback functions.
             case 0:
                 PRINTF_SBUFFER("Reader succeeded lockarray[%d]", idx_la);
                 ERROR_IF(r_execute(buffer, dummy_sbuff_node) == SBUFFER_FAILURE, "r_execute failure");                                         
                 pthread_mutex_unlock((buffer->nodelock_array)[dummy_sbuff_node->rb_index]);
-                PRINTF_SBUFFER("____END____\n");
                 return SBUFFER_SUCCESS;   
             case (EBUSY) : dummy_sbuff_node = dummy_sbuff_node->next; /*PRINTF_SBUFFER("Reader failed lockarray[%d]", idx_la)*/; break;
             default      : ERROR_IF(1, "Design error during processing of data"); return SBUFFER_FAILURE;
@@ -279,40 +275,37 @@ int r_lock_node(sbuffer_t* buffer) {
 
 
 void *reader_thread(void *buffer) {
-    
-    PRINTF_SBUFFER("Reader thread started");
-    pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_rw_startreaders);                                                        // Wait until all writers have buffered.
     int result;
-    PRINTF_SBUFFER("Reader starts reading ");
-    //int sv = 0;
     sbuffer_node_t* sbuff_dummy;
     sbuffer_node_t* sbuff_dummy_prev;
+
+    PRINTF_SBUFFER("Reader thread started and blocked. Waiting for writer buffering.");
+    pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_rw_startreaders);         
+    PRINTF_SBUFFER("Reader starts reading");
     while(1) {
-        //if (pthread_rwlock_tryrdlock(((sbuffer_t*)buffer)->rwlock_rw_writing) == EBUSY) {
-            //PRINTF_SBUFFER("Address of ((sbuffer_t*)buffer)->semaphore_count_nodes_ready :%p", ((sbuffer_t*)buffer)->semaphore_count_nodes_ready)               // writer still busy; lock not acquired.
             if (sem_trywait(((sbuffer_t*)buffer)->semaphore_rw_buffercount) == 0) {   
-                //PRINTF_SBUFFER("Reader locking on sync and executing callbacks"); 
-                pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_r_readerssync);
+                PRINTF_SBUFFER("Reader thread syncing before lock and execute"); 
+                result = pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_r_readerssync);
+                if(result != PTHREAD_BARRIER_SERIAL_THREAD) (sem_post(((sbuffer_t*)buffer)->semaphore_rw_buffercount));
                 
                 ERROR_IF(r_lock_node((sbuffer_t*)buffer) == SBUFFER_FAILURE, "r_lock_node error");
-                //PRINTF_SBUFFER("Reader blocking on barrier 'barier_r_readerssync"); 
+                PRINTF_SBUFFER("Reader thread syncing after lock and execute"); 
                 result = pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_r_readerssync);
-                
                 if (result != PTHREAD_BARRIER_SERIAL_THREAD) sched_yield();
-                else { sbuff_dummy = ((sbuffer_t*)buffer)->head; //look for address of last node in running buffer
-                    //end loop when sbuff dummy is at start of new buffer
-                    PRINTF_SBUFFER("Removing buffer...");
+                else { 
+                    PRINTF_SBUFFER("Reader thread clearing running buffer");
+                    sbuff_dummy = ((sbuffer_t*)buffer)->head; //look for address of last node in running buffer
+                                                              //end loop when sbuff dummy is at start of new buffer
                     for (int i = 0; i < ((sbuffer_t*)buffer)->no_readers; i++) {
-                        PRINTF_SBUFFER("Removing node...");
                         sbuff_dummy_prev = sbuff_dummy;
                         sbuff_dummy = sbuff_dummy->next;
                         free(sbuff_dummy_prev);
-                    }
-                    //PRINTF_SBUFFER("Address of ((sbuffer_t*)buffer)->head :%p", &(((sbuffer_t*)buffer)->head))   
+                        PRINTF_SBUFFER("Reader thread removed node %d of running buffer", i);
+                    }  
                     ((sbuffer_t*)buffer)->head = sbuff_dummy;
+                    PRINTF_SBUFFER("Reader thread removed running buffer");
                 }
-                PRINTF_SBUFFER("new head after removal: %p", ((sbuffer_t*)buffer)->head);
-                PRINTF_SBUFFER("Waiting for removal of previous buffer");
+                PRINTF_SBUFFER("Reader thread waiting for buffer removal");
                 pthread_barrier_wait(((sbuffer_t*)buffer)->barrier_r_readerssync);
             } else{
                 if (pthread_rwlock_tryrdlock(((sbuffer_t*)buffer)->rwlock_rw_writing) != EBUSY) {
@@ -366,12 +359,12 @@ void *writer_thread(void *buffer) {
     sbuff_callback_t* cb = NULL;
     //initialize callback & accompanying data_buffer
     cb = (sbuff_callback_t*)(dpl_get_element_at_index((((sbuffer_t*)buffer)->cbs_w), 0));
-    //ERROR_IF(cb == NULL, "No callback for sbuffer writer thread!"); -> cppcheck --> cb == NULL: redundant 
+    //ERROR_IF(cb == NULL, "No callback for sbuffer writer thread!"); //-> cppcheck --> cb == NULL: redundant 
 
     // callback execution
     while ((cb->function)((cb_args_t*)(cb->arguments)) != DATA_PROCESS_ERROR) {
         for (int i = 1; i <= ((cb_args_t*)(cb->arguments))->data_buffer->count_received; i++) {
-            PRINTF_SBUFFER("Writer inserting data in sbuffer: sensor id = %" PRIu16 " - temperature = %g - timestamp = %ld", 
+            PRINTF_SBUFFER("Writer thread inserting data in sbuffer: sensor id = %" PRIu16 " - temperature = %g - timestamp = %ld", 
                             ((_sbuff_data_buffer_head_)[i-1]).id, 
                             ((_sbuff_data_buffer_head_)[i-1]).value, 
                             ((long int)((_sbuff_data_buffer_head_)[i-1]).ts));
@@ -387,7 +380,7 @@ void *writer_thread(void *buffer) {
     //ERROR_IF(wr_status == DATA_PROCESS_ERROR, "Error receving data!");
     PRINTF_SBUFFER("Writer buffered %d sbuffer nodes.", sbuffer_size(((sbuffer_t*)buffer)));
     
-    PRINTF_SBUFFER("Writer lock rwlock 'rwlock_rw_writing'");
+    //PRINTF_SBUFFER("Writer lock rwlock 'rwlock_rw_writing'");
     pthread_rwlock_wrlock(((sbuffer_t*)buffer)->rwlock_rw_writing); //SBUFFERED LOCK ON
 
     PRINTF_SBUFFER("Writer blocks on 'barrier_rw_startreaders' (address: %p)", &(((sbuffer_t*)buffer)->barrier_rw_startreaders));
@@ -396,10 +389,10 @@ void *writer_thread(void *buffer) {
     PRINTF_SBUFFER("Writer continue writing");
     while ((cb->function)((cb_args_t*)(cb->arguments)) != DATA_PROCESS_ERROR) {
         for (int i = 1; i <= ((cb_args_t*)(cb->arguments))->data_buffer->count_received; i++) {
-            PRINTF_SBUFFER("Writer inserting data in sbuffer: sensor id = %" PRIu16 " - temperature = %g - timestamp = %ld", 
-                            ((_sbuff_data_buffer_head_)[i-1]).id, 
-                            ((_sbuff_data_buffer_head_)[i-1]).value, 
-                            ((long int)((_sbuff_data_buffer_head_)[i-1]).ts));
+            //PRINTF_SBUFFER("Writer inserting data in sbuffer: sensor id = %" PRIu16 " - temperature = %g - timestamp = %ld", 
+            //                ((_sbuff_data_buffer_head_)[i-1]).id, 
+            //                ((_sbuff_data_buffer_head_)[i-1]).value, 
+            //                ((long int)((_sbuff_data_buffer_head_)[i-1]).ts));
             sbuffer_insert(((sbuffer_t*)buffer), &((_sbuff_data_buffer_head_)[i-1]));
             sbuff_count++;
         }

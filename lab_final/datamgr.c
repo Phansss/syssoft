@@ -60,7 +60,7 @@ void process_sensor_data(sensor_data_t* data) {
     //Search for the sensor in dplist
     curr_sensor = sensor_search(sensor_room_list, data->id);
     if (curr_sensor == NULL) { 
-        ERROR_IF(curr_sensor == NULL, "Received data for missing sensor (%d)!", data->id)
+        PRINTF_DATAMGR("Received data for missing sensor with sid=%d !", data->id);
         return;
     }
     
@@ -122,7 +122,7 @@ my_sensor_t* sensor_search(dplist_t* sensor_dplist, sensor_id_t sid) {
     my_sensor_t dummy;
     dummy.sid = sid; 
     int idx = dpl_get_index_of_element(sensor_dplist, &dummy);
-    ERROR_IF(idx == -1, "sensor with sid not found in the list!"); if (idx==-1) return NULL;
+    if (idx==-1) {PRINTF_DATAMGR("sensor with sid not found in the list!"); return NULL;}
     my_sensor_t* sensor = dpl_get_element_at_index(sensor_dplist, idx);
     ERROR_IF(sensor == NULL, "sensor with idx %d not found in the list!", idx); if (sensor==NULL) return NULL;
     return sensor;     
